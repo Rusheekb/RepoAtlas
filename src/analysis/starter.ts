@@ -111,7 +111,7 @@ function displayName(name: string): string {
 function dataShapes(f: AnalyzedFile) {
   return f.symbols.filter((s) => {
     if (!DATA_KINDS.has(s.kind) || !/^[A-Z][A-Za-z0-9]+$/.test(s.name)) return false
-    if (/(Error|Exception|Err|Validator|Handler|Func|Fn|Option|Builder|Factory|Service|Client|Controller|Router|Test)$/.test(s.name)) return false
+    if (/(Error|Exception|Err|Validator|Handler|Func|Fn|Option|Builder|Factory|Service|Client|Controller|Router|Test|Manager|QuerySet)$/.test(s.name)) return false
     const helperName = /(Schema|Props|Config|Options|Base|Meta|Mixin|Manager|Serializer|Form|Admin|Dto|DTO|Input|Args)$/.test(s.name) && s.name.length > 6
     return !(helperName && f.role !== 'model')
   })
@@ -240,10 +240,15 @@ function techFiles(t: TechItem, analysis: StarterInput): string[] {
  * core technologies, data models (files with role 'model'/'schema' → their class names), routes and entry points,
  * related with simple verbs ("uses", "stores", "shows", "is built with"). 6–16 concepts. source: 'starter'.
  */
-export function buildStarterConcepts(analysis: StarterInput, contents: Record<string, string> = {}): ConceptMap {
+export interface StarterOptions {
+  /** What to call the project ("httpie" for the httpie/cli repository); defaults to the repository's name. */
+  name?: string
+}
+
+export function buildStarterConcepts(analysis: StarterInput, contents: Record<string, string> = {}, options: StarterOptions = {}): ConceptMap {
   const b: ConceptBuilder = { concepts: [], relations: [], ids: new Set() }
   const kind = analysis.projectKind
-  const repo = safeName(analysis.meta.repo || 'This project', 40)
+  const repo = safeName(options.name?.trim() || analysis.meta.repo || 'This project', 40)
   const files = Object.values(analysis.files)
   const intro = readmeIntro(analysis.readme?.content, 400)
   const add = (c: Omit<Concept, 'id'> & { id?: string }, base: string): string => {
@@ -329,9 +334,16 @@ export function buildStarterConcepts(analysis: StarterInput, contents: Record<st
   // 4. The main parts.
   const ranked = rankModules(analysis).slice(0, 5)
   const moduleConcept = new Map<string, string>()
+  const projectConcept = b.concepts.find((c) => c.id === projectId)
   ranked.forEach((m, i) => {
-    const sameAsProject = m.name.toLowerCase() === repo.toLowerCase()
-    const name = sameAsProject ? `${capitalize(m.name)} (main code)` : capitalize(m.name)
+    // The project's own main folder (flask/src/flask, gin's top level) is the project itself, not a second idea next to it.
+    if (projectConcept && slugify(m.name) === slugify(repo)) {
+      moduleConcept.set(m.id, projectId)
+      for (const p of m.keyFiles) if (!projectConcept.files.includes(p) && analysis.files[p] && projectConcept.files.length < 8) projectConcept.files.push(p)
+      return
+    }
+    // Keep folder names such as "ginS" as written; only lower-case names get a capital ("binding" → "Binding").
+    const name = /[A-Z]/.test(m.name) ? m.name : capitalize(m.name)
     const id = add(
       {
         name,
@@ -369,7 +381,7 @@ export function buildStarterConcepts(analysis: StarterInput, contents: Record<st
 
   // 5. Core technologies (frameworks first, a database if there is one, then the main language).
   const techs = analysis.techStack.filter((t) => t.importance === 'core' && t.category !== 'language')
-  const database = analysis.techStack.find((t) => t.category === 'database')
+  const database = analysis.techStack.find((t) => t.category === 'database' && t.importance !== 'tooling')
   const picked: TechItem[] = techs.slice(0, 3)
   if (database && !picked.includes(database)) picked.push(database)
   const mainLang = analysis.techStack.find((t) => t.category === 'language')

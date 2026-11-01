@@ -15,6 +15,24 @@ export interface TooltipContent {
 
 export type TooltipAnchor = { clientX: number; clientY: number } | { rect: DOMRect }
 
+/**
+ * Inline Markdown as plain words, for text shown in tooltips: `code` loses its backticks, **bold** / *emphasis*
+ * markers and link targets go. Code keeps its exact spelling (so `__init__.py` stays as it is).
+ */
+export function plainInline(text: string): string {
+  return text
+    .split(/(`+[^`\n]*`+)/g)
+    .map((part, i) =>
+      i % 2
+        ? part.replace(/^`+\s?|\s?`+$/g, '')
+        : part
+            .replace(/!?\[([^\]\n]{0,300})\]\([^)\n]{0,1000}\)/g, '$1')
+            .replace(/\*\*([^*\n]{1,500}?)\*\*/g, '$1')
+            .replace(/(^|[\s(“"'])\*([^*\s][^*\n]{0,300}?)\*(?=[\s.,;:!?)”"']|$)/g, '$1$2'),
+    )
+    .join('')
+}
+
 export interface GraphTooltipHandle {
   show: (content: TooltipContent, at: TooltipAnchor) => void
   move: (at: TooltipAnchor) => void
@@ -115,7 +133,7 @@ export function GraphTooltip({ containerRef, placement = 'pointer', ref }: Graph
           ))}
         </div>
       )}
-      {content.description && <p className="mt-1.5 leading-snug break-words text-ink-2">{content.description}</p>}
+      {content.description && <p className="mt-1.5 leading-snug break-words text-ink-2">{plainInline(content.description)}</p>}
       {content.hint && <p className="mt-1.5 text-[11px] text-ink-3">{content.hint}</p>}
     </div>
   )

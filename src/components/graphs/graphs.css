@@ -6,7 +6,7 @@
 /* ── React Flow ─────────────────────────────────────────────────────────── */
 .atlas-flow {
   --xy-background-color: transparent;
-  --xy-edge-stroke: var(--line-strong);
+  --xy-edge-stroke: var(--edge);
   --xy-edge-stroke-width: 1.5;
   --xy-edge-stroke-selected: var(--brand);
   --xy-node-border-radius: 12px;
@@ -106,18 +106,12 @@
 .atlas-flow .react-flow__edge {
   cursor: default;
 }
-/* Relation labels sit above cards, so a label squeezed between two close cards stays readable. */
-.atlas-flow .react-flow__edgelabel-renderer {
-  z-index: 5;
-}
+/* Relation labels are placed in free space; they stay under cards so a label can never hide a card's name. */
 .atlas-flow .react-flow__edge-interaction {
   stroke-linecap: round;
 }
 
 @media (max-width: 640px) {
-  .atlas-flow .react-flow__minimap {
-    display: none;
-  }
   .atlas-flow .react-flow__panel.atlas-flow-panel {
     margin: 8px;
     padding: 6px 10px;

@@ -4,7 +4,7 @@ import { useLocation } from 'react-router'
 import { IconButton } from '@/components/shell/IconButton'
 import { cn } from '@/components/ui/cn'
 import { ExplainBody, explainEyebrow, explainTargetKey } from '@/components/shell/explain/bodies'
-import { useMediaQuery } from '@/components/shell/hooks'
+import { useMediaQuery } from '@/components/shell/media'
 import type { ExplainTarget } from '@/core/types'
 import { useExplain } from '@/state/explain'
 import { useProgress } from '@/state/progress'
@@ -62,7 +62,11 @@ export function ExplainPanel() {
     if (!target && hadTarget.current) {
       const el = returnFocus.current
       returnFocus.current = null
+      const lost = !document.activeElement || document.activeElement === document.body
       if (el?.isConnected) el.focus({ preventScroll: true })
+      // The element that opened the panel is gone (a popover closed, the view changed) and focus went down with the
+      // panel: continue from the main content rather than from the top of the page.
+      else if (lost) document.getElementById('main-content')?.focus({ preventScroll: true })
     }
     hadTarget.current = Boolean(target)
   }, [target])

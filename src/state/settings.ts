@@ -24,6 +24,9 @@ export interface SettingsState {
   set: (patch: Partial<Omit<SettingsState, 'set'>>) => void
 }
 
+/** New readers start with the plainest explanations: RepoAtlas promises that no coding knowledge is needed. */
+export const DEFAULT_READING_LEVEL: ReadingLevel = 'eli5'
+
 const SECRET_KEYS = ['anthropicApiKey', 'githubToken'] as const
 const SESSION_SECRETS = 'repoatlas:session-secrets'
 
@@ -50,7 +53,7 @@ export const useSettings = create<SettingsState>()(
       githubToken: '',
       rememberKeys: false,
       model: DEFAULT_MODEL,
-      readingLevel: 'beginner',
+      readingLevel: DEFAULT_READING_LEVEL,
       contextSize: 'medium',
       analysisDepth: 'standard',
       theme: 'system',

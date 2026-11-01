@@ -146,6 +146,31 @@ describe('buildStarterConcepts', () => {
   })
 })
 
+describe('buildStarterConcepts: one idea per thing', () => {
+  it('folds the project’s own main folder into the project idea instead of showing it twice', () => {
+    const base = fixture()
+    const main = base.modules.find((m) => m.id === 'src') ?? base.modules[0]
+    // A repository whose main code folder carries its own name (flask/src/flask, gin's top level).
+    const renamed = { ...base, modules: base.modules.map((m) => (m === main ? { ...m, name: 'bookshelf' } : m)) }
+    const map = buildStarterConcepts(renamed, contents)
+    const names = map.concepts.map((c) => c.name.toLowerCase())
+    expect(names.filter((n) => n.startsWith('bookshelf'))).toEqual(['bookshelf'])
+    expect(names.some((n) => n.includes('(main code)'))).toBe(false)
+    for (const r of map.relations) expect(r.from).not.toBe(r.to)
+  })
+
+  it('uses the package name for a generically named repository', () => {
+    const map = buildStarterConcepts(fixture(), contents, { name: 'httpie' })
+    expect(map.concepts.find((c) => c.id === 'the-project')?.name).toBe('httpie')
+  })
+
+  it('leaves out a database that is only a helper tool', () => {
+    const base = fixture()
+    const quiet = { ...base, techStack: base.techStack.map((t) => (t.id === 'mongodb' ? { ...t, importance: 'tooling' as const } : t)) }
+    expect(buildStarterConcepts(quiet, contents).concepts.find((c) => c.name === 'MongoDB')).toBeUndefined()
+  })
+})
+
 describe('buildStarterTours', () => {
   it('builds tours that walk through real files with verbatim snippets', () => {
     const tours = buildStarterTours(fixture(), contents)

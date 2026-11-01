@@ -5,6 +5,8 @@ import { detectLanguage, languageFamily } from './languages'
 import { maskSource } from './strip'
 
 const MAX_ROUTES = 100
+/** Annotations / attributes examined per file (each one reads a few hundred characters around it). */
+const MAX_ANNOTATIONS = 2000
 const MAX_CONTENT = 1_500_000
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 
@@ -21,6 +23,10 @@ class Routes {
 
   add(method: string, path: string, offset: number): void {
     this.addAtLine(method, path, this.lineAt(offset))
+  }
+
+  full(): boolean {
+    return this.list.length >= MAX_ROUTES
   }
 
   addAtLine(method: string, path: string, line: number): void {
@@ -91,6 +97,22 @@ function argsAt(text: string, open: number, limit = 600): string {
   return text.slice(open + 1, Math.min(text.length, open + limit))
 }
 
+/** For every "{" the index of its matching "}" (or the end of the text when it never closes), in one pass. */
+function matchingBraces(code: string): Map<number, number> {
+  const close = new Map<number, number>()
+  const open: number[] = []
+  for (let i = 0; i < code.length; i++) {
+    const c = code.charCodeAt(i)
+    if (c === 123) open.push(i)
+    else if (c === 125) {
+      const o = open.pop()
+      if (o !== undefined) close.set(o, i)
+    }
+  }
+  for (const o of open) close.set(o, code.length)
+  return close
+}
+
 /** Brace depth at the start of every line (computed on the code view). */
 function lineDepths(code: string): number[] {
   const depths: number[] = []
@@ -119,7 +141,7 @@ function exportedMethods(text: string, code: string, r: Routes, path: string): v
   }
   for (const m of text.matchAll(/\bexport\s*\{([^}]*)\}/g)) {
     for (const part of m[1].split(',')) {
-      const name = part.trim().split(/\s+as\s+/).pop()?.trim() ?? ''
+      const name = part.trim().split(/(?<!\s)\s+as\s+/).pop()?.trim() ?? ''
       if (/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/.test(name)) r.add(name, path, m.index)
     }
   }
@@ -240,7 +262,7 @@ function jsRoutes(text: string, code: string, r: Routes): void {
 function pythonRoutes(filePath: string, text: string, code: string, r: Routes): void {
   // Router / blueprint prefixes: router = APIRouter(prefix="/users"), bp = Blueprint("x", __name__, url_prefix="/api")
   const prefixes = new Map<string, string>()
-  for (const m of text.matchAll(/^\s*(\w+)\s*=\s*(?:\w+\.)?(APIRouter|Blueprint)\s*\(/gm)) {
+  for (const m of text.matchAll(/^[ \t]*(\w+)[ \t]*=\s*(?:\w+\.)?(APIRouter|Blueprint)\s*\(/gm)) {
     const args = argsAt(text, m.index + m[0].length - 1)
     const p = /\b(?:url_)?prefix\s*=\s*(['"])([^'"]*)\1/.exec(args)
     if (p) prefixes.set(m[1], p[2])
@@ -268,7 +290,7 @@ function pythonRoutes(filePath: string, text: string, code: string, r: Routes): 
     } else r.add(m[2], full, m.index)
   }
   // Bottle-style bare decorators: @route('/x', method='POST'), @get('/x')
-  for (const m of text.matchAll(/^\s*@(route|get|post|put|delete|patch)\s*\(\s*(['"])([^'"]*)\2([^)]*)\)/gm)) {
+  for (const m of text.matchAll(/^[ \t]*@(route|get|post|put|delete|patch)\s*\(\s*(['"])([^'"]*)\2([^)]*)\)/gm)) {
     if (!inCode(code, text, m.index)) continue
     const meth = m[1] === 'route' ? (/\bmethod\s*=\s*(['"])(\w+)\1/.exec(m[4])?.[2] ?? 'GET') : m[1]
     r.add(meth, joinRoute('', m[3]), m.index)
@@ -389,12 +411,14 @@ function railsRoutes(text: string, code: string, r: Routes): void {
     const t = textLines[i]
     const c = codeLines[i] ?? ''
     const line = i + 1
-    const opensBlock = /\bdo\s*(?:\|[^|]*\|)?\s*$/.test(c)
+    // Blank lines (and lines of only string text) hold no routes; skipping them keeps files of blank lines fast.
+    if (!/\S/.test(c)) continue
+    const opensBlock = /\bdo\s*(?:\|[^|]*\|\s*)?$/.test(c)
     if (/^\s*end\b/.test(c)) {
       stack.pop()
       continue
     }
-    let m = /^\s*(get|post|put|patch|delete|options|head|match)\s*\(?\s*(['"])([^'"]*)\2(.*)$/.exec(t)
+    let m = /^\s*(get|post|put|patch|delete|options|head|match)\s*(?:\(\s*)?(['"])([^'"]*)\2(.*)$/.exec(t)
     if (m) {
       const via = /\bvia:\s*(\[[^\]]*\]|:\w+)/.exec(m[4])
       const methods = m[1] === 'match' ? (via ? methodsIn(via[1]) : ['ANY']) : [m[1]]
@@ -413,7 +437,7 @@ function railsRoutes(text: string, code: string, r: Routes): void {
       r.addAtLine('GET', joinRoute(prefix(), '/'), line)
       continue
     }
-    m = /^\s*(resources|resource)\s+((?::\w+\s*,?\s*)+)(.*)$/.exec(t)
+    m = /^\s*(resources|resource)\s+((?::\w+\s*(?:,\s*)?)+)(.*)$/.exec(t)
     if (m) {
       const names = symbolsList(m[2])
       const opts = m[3]
@@ -435,7 +459,7 @@ function railsRoutes(text: string, code: string, r: Routes): void {
       continue
     }
     if (/^\s*scope\b/.test(t)) {
-      const sm = /^\s*scope\s*\(?\s*(?:(['"])([^'"]*)\1|:(\w+)\b(?!:)|path:\s*(['"])([^'"]*)\4)?/.exec(t)
+      const sm = /^\s*scope\s*(?:\(\s*)?(?:(['"])([^'"]*)\1|:(\w+)\b(?!:)|path:\s*(['"])([^'"]*)\4)?/.exec(t)
       if (opensBlock) stack.push({ type: 'path', path: sm?.[2] ?? sm?.[5] ?? sm?.[3] ?? '' })
       continue
     }
@@ -453,7 +477,7 @@ function railsRoutes(text: string, code: string, r: Routes): void {
 }
 
 function sinatraRoutes(text: string, code: string, r: Routes): void {
-  for (const m of text.matchAll(/^\s*(get|post|put|patch|delete|options|head)\s*\(?\s*(['"])(\/[^'"]*)\2\s*\)?\s*(?:do\b|\{)/gm)) {
+  for (const m of text.matchAll(/^[ \t]*(get|post|put|patch|delete|options|head)\s*(?:\(\s*)?(['"])(\/[^'"]*)\2\s*(?:\)\s*)?(?:do\b|\{)/gm)) {
     if (inCode(code, text, m.index)) r.add(m[1], m[3], m.index)
   }
 }
@@ -466,20 +490,15 @@ function phpRoutes(raw: string, text: string, code: string, r: Routes): void {
   // Prefix groups: Route::prefix('admin')->group(function () { … }) / Route::group(['prefix' => 'admin'], …).
   // Each group covers the code between its opening "{" and the matching "}".
   const groups: { start: number; end: number; prefix: string }[] = []
-  for (const m of text.matchAll(/Route::(?:prefix\s*\(\s*(['"])([^'"]*)\1\s*\)[^;{]*?->group|group\s*\(\s*\[[^\]]*?['"]prefix['"]\s*=>\s*(['"])([^'"]*)\3)/g)) {
+  let braces: Map<number, number> | null = null
+  for (const m of text.matchAll(/Route::(?:prefix\s*\(\s*(['"])([^'"]*)\1\s*\)[^;{]{0,300}?->group|group\s*\(\s*\[[^\]]{0,300}?['"]prefix['"]\s*=>\s*(['"])([^'"]*)\3)/g)) {
     if (!inCode(code, text, m.index)) continue
     const open = code.indexOf('{', m.index)
     if (open === -1) continue
-    let depth = 0
-    let close = code.length
-    for (let k = open; k < code.length; k++) {
-      if (code[k] === '{') depth++
-      else if (code[k] === '}' && --depth === 0) {
-        close = k
-        break
-      }
-    }
-    groups.push({ start: open, end: close, prefix: m[2] ?? m[4] ?? '' })
+    // Matching braces are found once for the whole file (re-scanning from every group would be quadratic).
+    braces ??= matchingBraces(code)
+    groups.push({ start: open, end: braces.get(open) ?? code.length, prefix: m[2] ?? m[4] ?? '' })
+    if (groups.length >= MAX_ROUTES) break
   }
   const prefixAt = (offset: number) => {
     let p = ''
@@ -537,7 +556,7 @@ function phpRoutes(raw: string, text: string, code: string, r: Routes): void {
 
 function goRoutes(text: string, code: string, r: Routes): void {
   const varPrefix = new Map<string, string>()
-  for (const m of text.matchAll(/(\w+)\s*:?=\s*(\w+)\s*\.\s*Group\s*\(\s*"([^"]*)"/g)) {
+  for (const m of text.matchAll(/(?<!\w)(\w+)\s*:?=\s*(\w+)\s*\.\s*Group\s*\(\s*"([^"]*)"/g)) {
     varPrefix.set(m[1], joinRoute(varPrefix.get(m[2]) ?? '', m[3]))
   }
   // chi: r.Route("/articles", func(r chi.Router) { … }) — nested prefixes by block depth.
@@ -549,10 +568,15 @@ function goRoutes(text: string, code: string, r: Routes): void {
     const t = textLines[i]
     const d = depths[i] ?? 0
     while (blocks.length && d < blocks[blocks.length - 1].depth) blocks.pop()
+    // Every route call has a "." (r.GET, r.Route): other lines are skipped cheaply.
+    if (!t.includes('.')) {
+      offset += t.length + 1
+      continue
+    }
     const blockPrefix = blocks.reduce((acc, b) => joinRoute(acc, b.prefix), '')
-    const route = /(\w+)\s*\.\s*Route\s*\(\s*"([^"]*)"\s*,\s*func/.exec(t)
+    const route = /(?<!\w)(\w+)\s*\.\s*Route\s*\(\s*"([^"]*)"\s*,\s*func/.exec(t)
     if (route && inCode(code, text, offset + route.index)) blocks.push({ depth: d + 1, prefix: route[2] })
-    for (const m of t.matchAll(/(\w+)\s*\.\s*(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|Any|Get|Post|Put|Patch|Delete|Options|Head|All|Handle|HandleFunc|Method|MethodFunc)\s*\(\s*(?:"(\w+)"\s*,\s*)?"([^"]*)"/g)) {
+    for (const m of t.matchAll(/(?<!\w)(\w+)\s*\.\s*(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|Any|Get|Post|Put|Patch|Delete|Options|Head|All|Handle|HandleFunc|Method|MethodFunc)\s*\(\s*(?:"(\w+)"\s*,\s*)?"([^"]*)"/g)) {
       if (!inCode(code, text, offset + m.index)) continue
       const recv = m[1]
       let method = m[2]
@@ -591,11 +615,18 @@ function jvmRoutes(text: string, code: string, r: Routes, kotlin: boolean): void
     if (cluster?.method) r.add(cluster.method, joinRoute(classPrefix, cluster.path ?? ''), cluster.index)
     cluster = null
   }
+  // Annotations inside another annotation's arguments are skipped (and a run of unclosed ones is read once, not again
+  // from every "@").
+  let argsEnd = 0
+  let seen = 0
   for (const m of text.matchAll(JVM_ANNOT)) {
-    if (!inCode(code, text, m.index)) continue
+    // Each annotation looks a little way ahead; thousands of them only happen in generated or hostile files.
+    if (++seen > MAX_ANNOTATIONS || r.full()) break
+    if (m.index < argsEnd || !inCode(code, text, m.index)) continue
     const name = m[1]
     const args = m[2] ? argsAt(text, m.index + m[0].length - 1) : ''
     const end = m.index + m[0].length + (m[2] ? args.length + 1 : 0)
+    argsEnd = end
     const after = code.slice(end, end + 300)
     const targetsClass = /^\s*(?:@[\w.]+(?:\([^)]*\))?\s*)*(?:(?:public|private|protected|internal|abstract|final|open|data|sealed)\s+)*(?:class|interface|object)\b/.test(after)
     const pathArg = (/\b(?:value|path)\s*=\s*(\{[^}]*\}|\[[^\]]*\]|"[^"]*")/.exec(args)?.[1] ?? args).trim()
@@ -615,7 +646,7 @@ function jvmRoutes(text: string, code: string, r: Routes, kotlin: boolean): void
       cluster.method = name
       cluster.index = Math.min(cluster.index, m.index)
       // Flush once the method declaration follows (a later @Path on the same method still belongs to it).
-      if (/^\s*(?:@(?!Path\b)[\w.]+(?:\([^)]*\))?\s*)*(?:(?:public|private|protected|static|final|abstract|suspend|override|open|fun|synchronized)\s+)*(?:fun\b|[\w<>[\],.?\s]+\s+\w+\s*\()/.test(after)) flush()
+      if (/^\s*(?:@(?!Path\b)[\w.]+(?:\([^)]*\))?\s*)*(?:(?:public|private|protected|static|final|abstract|suspend|override|open|fun|synchronized)\s+)*(?:fun\b|(?:[\w<>[\],.?]+\s+)+\w+\s*\()/.test(after)) flush()
       continue
     }
     if (name === 'Path') {
@@ -641,13 +672,14 @@ function jvmRoutes(text: string, code: string, r: Routes, kotlin: boolean): void
       const t = textLines[i]
       const d = depths[i] ?? 0
       while (blocks.length && d < blocks[blocks.length - 1].depth) blocks.pop()
+      if (!/\S/.test(t)) continue
       const prefix = blocks.reduce((acc, b) => joinRoute(acc, b.prefix), '')
       const route = /^\s*route\s*\(\s*"([^"]*)"\s*\)\s*\{/.exec(t)
       if (route) {
         blocks.push({ depth: d + 1, prefix: route[1] })
         continue
       }
-      const verb = /^\s*(get|post|put|patch|delete|head|options)\s*(?:\(\s*(?:"([^"]*)")?\s*\))?\s*\{/.exec(t)
+      const verb = /^\s*(get|post|put|patch|delete|head|options)\s*(?:\(\s*(?:"([^"]*)"\s*)?\)\s*)?\{/.exec(t)
       if (verb) r.addAtLine(verb[1], joinRoute(prefix, verb[2] ?? ''), i + 1)
     }
   }
@@ -662,11 +694,16 @@ function csharpRoutes(text: string, code: string, r: Routes): void {
   let className = ''
   let methodRoute: string | null = null
   const attrs = [...text.matchAll(/\[(Route|Http(Get|Post|Put|Patch|Delete|Head|Options))\b(\s*\()?/g)].filter((m) => inCode(code, text, m.index))
-  for (const m of attrs) {
+  // Attributes inside another attribute's arguments are skipped (a run of unclosed ones is read once).
+  let argsEnd = 0
+  for (const [n, m] of attrs.entries()) {
+    if (n >= MAX_ANNOTATIONS || r.full()) break
+    if (m.index < argsEnd) continue
     const args = m[3] ? argsAt(text, m.index + m[0].length - 1) : ''
     const end = m.index + m[0].length + (m[3] ? args.length + 1 : 0)
+    argsEnd = end
     const after = code.slice(end, end + 400)
-    const cls = /^\s*\]?\s*(?:\[[^\]]*\]\s*)*(?:(?:public|internal|sealed|abstract|partial|static)\s+)*class\s+(\w+)/.exec(after)
+    const cls = /^\s*(?:\]\s*)?(?:\[[^\]]*\]\s*)*(?:(?:public|internal|sealed|abstract|partial|static)\s+)*class\s+(\w+)/.exec(after)
     const arg = firstString(args)
     if (m[1] === 'Route') {
       if (cls) {
@@ -684,7 +721,7 @@ function csharpRoutes(text: string, code: string, r: Routes): void {
   for (const m of text.matchAll(/(?:var|RouteGroupBuilder)\s+(\w+)\s*=\s*(\w+)\s*\.\s*MapGroup\s*\(\s*"([^"]*)"/g)) {
     groups.set(m[1], joinRoute(groups.get(m[2]) ?? '', m[3]))
   }
-  for (const m of text.matchAll(/(\w+)\s*\.\s*Map(Get|Post|Put|Patch|Delete|Methods|Fallback)?\s*\(\s*"([^"]*)"(\s*,\s*new\s*\[\]\s*\{[^}]*\})?/g)) {
+  for (const m of text.matchAll(/(?<!\w)(\w+)\s*\.\s*Map(Get|Post|Put|Patch|Delete|Methods|Fallback)?\s*\(\s*"([^"]*)"(\s*,\s*new\s*\[\]\s*\{[^}]*\})?/g)) {
     if (!inCode(code, text, m.index) || m[2] === 'Fallback' || m[2] === undefined) continue
     const methods = m[2] === 'Methods' ? methodsIn(m[4] ?? '') : [m[2]]
     for (const meth of methods.length ? methods : ['ANY']) r.add(meth, joinRoute(groups.get(m[1]) ?? '', m[3]), m.index)
@@ -709,7 +746,7 @@ function rustRoutes(text: string, code: string, r: Routes): void {
     if (!inCode(code, text, m.index)) continue
     const args = argsAt(text, m.index + m[0].indexOf('('))
     const methods = new Set<string>()
-    for (const x of args.matchAll(/(?:^|[\s,.(:])(get|post|put|patch|delete|head|options|any)\s*(?:::<[^>]*>)?\s*\(/g)) methods.add(normalizeMethod(x[1]))
+    for (const x of args.matchAll(/(?:^|[\s,.(:])(get|post|put|patch|delete|head|options|any)\s*(?:::<[^>]*>\s*)?\(/g)) methods.add(normalizeMethod(x[1]))
     for (const meth of methods.size ? methods : ['ANY']) r.add(meth, m[1], m.index)
   }
   // Actix: web::resource("/x").route(web::get().to(h))
@@ -745,6 +782,7 @@ function phoenixRoutes(text: string, code: string, r: Routes): void {
   for (let i = 0; i < textLines.length; i++) {
     const t = textLines[i]
     const c = codeLines[i] ?? ''
+    if (!/\S/.test(c)) continue
     const opens = /\bdo\s*$/.test(c)
     if (/^\s*end\b/.test(c)) {
       stack.pop()
@@ -778,7 +816,7 @@ function vaporRoutes(text: string, code: string, r: Routes): void {
   for (const m of text.matchAll(/let\s+(\w+)\s*=\s*(\w+)\s*\.\s*grouped\s*\(([^)]*)\)/g)) {
     groups.set(m[1], joinRoute(groups.get(m[2]) ?? '', allStrings(m[3]).join('/')))
   }
-  for (const m of text.matchAll(/(\w+)\s*\.\s*(get|post|put|patch|delete)\s*\(([^)]*)\)(\s*\{)?/g)) {
+  for (const m of text.matchAll(/(?<!\w)(\w+)\s*\.\s*(get|post|put|patch|delete)\s*\(([^)\n]{0,500})\)(\s*\{)?/g)) {
     if (!inCode(code, text, m.index)) continue
     if (!m[4] && !/\buse\s*:/.test(m[3])) continue
     const segs = allStrings(m[3]).filter((s) => s !== '')
@@ -788,7 +826,7 @@ function vaporRoutes(text: string, code: string, r: Routes): void {
 
 function dartRoutes(text: string, code: string, r: Routes): void {
   if (!/shelf_router|dart_frog|alfred/.test(text)) return
-  for (const m of text.matchAll(/(?:\w+|\.)\s*\.\s*(get|post|put|patch|delete|all)\s*\(\s*(['"])(\/[^'"]*)\2/g)) {
+  for (const m of text.matchAll(/(?:(?<!\w)\w+|\.)\s*\.\s*(get|post|put|patch|delete|all)\s*\(\s*(['"])(\/[^'"]*)\2/g)) {
     if (inCode(code, text, m.index)) r.add(m[1], m[3], m.index)
   }
 }

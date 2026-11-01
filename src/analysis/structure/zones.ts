@@ -125,14 +125,30 @@ export function folderSegments(path: string): string[] {
   return parts
 }
 
+/** Languages whose source folders mirror the package name (src/main/java/com/example/demo/…). */
+const PACKAGE_ROOT_LANGS = new Set(['java', 'kotlin', 'scala', 'groovy'])
+
+/**
+ * How many leading folder segments say something about the folder's role. Below a JVM source root
+ * (src/main/java/, src/test/kotlin/, app/src/androidTest/java/ …) the folders are package names, not roles:
+ * Spring's default package is com.example.demo and spring-petclinic lives in org/springframework/samples/.
+ */
+export function roleSegmentCount(segs: readonly string[]): number {
+  for (let i = 2; i < segs.length; i++) {
+    if (PACKAGE_ROOT_LANGS.has(segs[i]) && segs[i - 2] === 'src') return i + 1
+  }
+  return segs.length
+}
+
 /**
  * Every zone a path sits in. Order of the result: nearest folder first.
  * "build" and "gen" only count as generated output at the top level (src/build/ is often real code).
+ * Package folders below a JVM source root never count (see roleSegmentCount).
  */
 export function zonesOf(path: string): Zone[] {
   const segs = folderSegments(path)
   const out: Zone[] = []
-  for (let i = segs.length - 1; i >= 0; i--) {
+  for (let i = roleSegmentCount(segs) - 1; i >= 0; i--) {
     const z = zoneOfSegment(segs[i], i)
     if (z && !out.includes(z)) out.push(z)
   }
@@ -166,15 +182,30 @@ export function isPeripheral(path: string): boolean {
   return z.includes('test') || z.includes('example') || z.includes('docs') || z.includes('vendor') || z.includes('generated')
 }
 
-/** Test files by name alone (any folder): foo.test.ts, foo_test.go, test_foo.py, FooTest.java, foo_spec.rb … */
+/**
+ * Test files by name alone (any folder): foo.test.ts, foo_test.go, test_foo.py, Django's tests.py, FooTest.java,
+ * foo_spec.rb, and test set-up helpers such as setupTests.ts or testFixtures.ts …
+ */
 export function isTestFileName(name: string): boolean {
   const lower = name.toLowerCase()
   if (/\.(test|spec|e2e|cy)\.[a-z0-9]+$/.test(lower)) return true
   if (/_test\.(go|py|exs|dart|cc|cpp|c|rs|lua|r|sh)$/.test(lower)) return true
   if (/^test_.+\.py$/.test(lower)) return true
+  if (/^tests?\.py$|^tests_.+\.py$/.test(lower)) return true
+  if (/^(?:setup-?tests?|tests?-?setup|setup-?test-?env)\.[a-z]+$/.test(lower)) return true
+  if (/^test-?(?:fixtures?|helpers?|utils?)\.(?:[cm]?[jt]sx?)$/.test(lower)) return true
   if (/_spec\.(rb|lua|js|ts)$/.test(lower)) return true
   if (/[a-z0-9_](Test|Tests|Spec|IT|TestCase)\.(java|kt|kts|scala|groovy|cs|php|swift|m)$/.test(name)) return true
   if (/^test[A-Z_].*\.(java|kt|php|swift|m)$/.test(name)) return true
   if (lower === 'conftest.py') return true
   return false
+}
+
+/**
+ * Build-tool launcher scripts that projects copy in unchanged (Maven / Gradle wrappers …). Like vendored code they
+ * say nothing about the project's own languages or where its program starts.
+ */
+export function isWrapperScript(path: string): boolean {
+  const name = path.slice(path.lastIndexOf('/') + 1).toLowerCase()
+  return /^(?:mvnw|gradlew)(?:\.(?:cmd|bat))?$/.test(name)
 }

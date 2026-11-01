@@ -3,7 +3,7 @@ import { RefreshCw, Sparkles, X } from 'lucide-react'
 import { CodeViewer, MAX_HIGHLIGHT_LINES } from '@/components/code/CodeViewer'
 import { grammarFor } from '@/components/code/languages'
 import { GitHubMark, OutboundLink } from '@/components/shell/bits'
-import { useMediaQuery } from '@/components/shell/hooks'
+import { useMediaQuery } from '@/components/shell/media'
 import { makeReadmeResolver } from '@/components/shell/urls'
 import { Badge, Button, Markdown, Segmented } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
@@ -139,7 +139,7 @@ export function CodePane(props: CodePaneProps) {
   } else if (content != null && showFormatted) {
     body = (
       <div className="h-full overflow-y-auto px-5 py-5 sm:px-8 sm:py-6" tabIndex={0} role="region" aria-label={`${file.name}, formatted`}>
-        <Markdown className="mx-auto max-w-3xl" resolveUrl={resolveUrl}>
+        <Markdown trusted className="mx-auto max-w-3xl" resolveUrl={resolveUrl}>
           {content}
         </Markdown>
       </div>

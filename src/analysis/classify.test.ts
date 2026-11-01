@@ -224,3 +224,20 @@ describe('classifyFile — content signals', () => {
     }
   })
 })
+
+describe('classifyFile — project shapes from the review', () => {
+  it('keeps Java package folders named example/samples as real code', () => {
+    const app = 'package com.example.demo;\n\n@SpringBootApplication\npublic class DemoApplication {\n  public static void main(String[] args) { SpringApplication.run(DemoApplication.class, args); }\n}\n'
+    expect(cls('src/main/java/com/example/demo/DemoApplication.java', app)).toBe('source/entry/api')
+    expect(cls('src/main/java/org/springframework/samples/petclinic/owner/Owner.java', 'package x;\npublic class Owner {}\n')).not.toMatch(/\/docs$/)
+    expect(cls('samples/web/src/main/java/com/acme/Web.java', 'package com.acme;\npublic class Web {}\n')).toMatch(/\/docs$/)
+  })
+
+  it('treats Django tests.py as tests', () => {
+    expect(cls('aggregator/tests.py', 'from django.test import TestCase\n\nclass T(TestCase):\n    pass\n')).toBe('test/test/test')
+  })
+
+  it('treats binary test fixtures as media, not lines of test code', () => {
+    expect(cls('dashboard/fixtures/example_data.json.gz')).toBe('asset/fixture/test')
+  })
+})

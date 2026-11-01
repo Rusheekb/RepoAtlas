@@ -130,6 +130,23 @@ export interface LayeredOptions {
   ranksep?: number
   /** Gap between cells of the grid used for unlinked nodes. */
   gridGap?: number
+  /**
+   * Width ÷ height of the canvas the picture is drawn in (default 1.6). Unlinked nodes are wrapped into a grid of
+   * about this shape (or the main picture's width, if that is wider), so they don't form a tall, thin strip.
+   */
+  targetAspect?: number
+}
+
+/**
+ * Columns for a grid of `count` cells of cellW × cellH (plus gaps) whose overall shape is closest to `aspect`
+ * (width ÷ height), but never narrower than `minWidth` allows.
+ */
+export function gridColumnsFor(count: number, cellW: number, cellH: number, gap: number, aspect: number, minWidth = 0): number {
+  if (count <= 0) return 1
+  const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 1.6
+  const byShape = Math.ceil(Math.sqrt((count * (cellH + gap) * a) / (cellW + gap)))
+  const byWidth = Math.floor((minWidth + gap) / (cellW + gap))
+  return clamp(Math.max(byShape, byWidth), 1, count)
 }
 
 /**
@@ -203,9 +220,7 @@ export function layoutLayered(nodes: readonly SizedNode[], links: readonly LinkI
   if (isolated.length) {
     const cellW = Math.max(...isolated.map((n) => n.width))
     const cellH = Math.max(...isolated.map((n) => n.height))
-    const columns = linked.size
-      ? clamp(Math.floor((mainW + gap) / (cellW + gap)), Math.min(3, isolated.length), isolated.length)
-      : Math.max(1, Math.ceil(Math.sqrt((isolated.length * 1.6 * cellH) / cellW)))
+    const columns = gridColumnsFor(isolated.length, cellW, cellH, gap, opts.targetAspect ?? 1.6, linked.size ? mainW : 0)
     const grid = gridLayout(isolated, columns, gap)
     const startY = linked.size ? mainH + Math.max(48, ranksep * 0.75) : 0
     const startX = linked.size && grid.width < mainW ? (mainW - grid.width) / 2 : 0
@@ -218,13 +233,15 @@ export function layoutLayered(nodes: readonly SizedNode[], links: readonly LinkI
 }
 
 export interface ForceOptions {
-  /** Preferred link length (px between centers). */
+  /** Preferred link length (px between centers, on top of the two cards' own sizes). */
   linkDistance?: number
   ticks?: number
   /** Many-body strength (negative = repel). */
   charge?: number
-  /** Minimum free space kept between node rectangles. */
+  /** Minimum free space kept between node rectangles (room for a relation label between two cards). */
   padding?: number
+  /** Width ÷ height the picture should roughly have (default 1.8: canvases are wider than tall). */
+  aspect?: number
 }
 
 /**
@@ -233,9 +250,13 @@ export interface ForceOptions {
  * Coordinates start at (0,0).
  */
 export function layoutForce(nodes: readonly SizedNode[], links: readonly LinkInput[], opts: ForceOptions = {}): LayoutResult {
-  const linkDistance = opts.linkDistance ?? 160
+  const linkDistance = opts.linkDistance ?? 110
   const ticks = opts.ticks ?? 300
-  const padding = opts.padding ?? 18
+  const padding = opts.padding ?? 34
+  const aspect = clamp(Number.isFinite(opts.aspect) && (opts.aspect ?? 0) > 0 ? (opts.aspect as number) : 1.8, 0.5, 3)
+  // Pull harder vertically than horizontally so the picture spreads out sideways to match the canvas.
+  const pullX = 0.1 / Math.sqrt(aspect) / 1.15
+  const pullY = 0.1 * Math.sqrt(aspect) * 1.2
   type SimNode = SimulationNodeDatum & { id: string; w: number; h: number; r: number }
 
   const simNodes: SimNode[] = nodes.map((n, i) => {
@@ -245,7 +266,8 @@ export function layoutForce(nodes: readonly SizedNode[], links: readonly LinkInp
       id: n.id,
       w: n.width,
       h: n.height,
-      r: Math.max(n.width, n.height) / 2,
+      // Cards are wide rectangles: collide on their half-diagonal so corners don't touch.
+      r: Math.hypot(n.width / 2, n.height / 2),
       x: radius * Math.cos(angle),
       y: radius * Math.sin(angle),
     }
@@ -257,7 +279,7 @@ export function layoutForce(nodes: readonly SizedNode[], links: readonly LinkInp
 
   if (simNodes.length > 1) {
     const sim = forceSimulation<SimNode>(simNodes)
-      .force('charge', forceManyBody<SimNode>().strength(opts.charge ?? -520))
+      .force('charge', forceManyBody<SimNode>().strength(opts.charge ?? -700))
       .force(
         'link',
         forceLink<SimNode, SimulationLinkDatum<SimNode>>(simLinks)
@@ -265,18 +287,18 @@ export function layoutForce(nodes: readonly SizedNode[], links: readonly LinkInp
           .distance((l) => {
             const s = l.source as SimNode
             const t = l.target as SimNode
-            return linkDistance + (s.r + t.r) * 0.75
+            return linkDistance + (s.r + t.r) * 0.6
           })
           .strength(0.55),
       )
       .force(
         'collide',
-        forceCollide<SimNode>((d) => d.r * 0.85 + padding)
+        forceCollide<SimNode>((d) => d.r * 0.85 + padding / 2)
           .strength(0.9)
           .iterations(2),
       )
-      .force('x', forceX<SimNode>(0).strength(0.07))
-      .force('y', forceY<SimNode>(0).strength(0.1))
+      .force('x', forceX<SimNode>(0).strength(pullX))
+      .force('y', forceY<SimNode>(0).strength(pullY))
       .force('center', forceCenter(0, 0))
       .stop()
     sim.tick(ticks)
@@ -447,7 +469,56 @@ function overlapArea(a: Rect, b: Rect): number {
   return w > 0 && h > 0 ? w * h : 0
 }
 
-const LABEL_STOPS = [0.5, 0.42, 0.58, 0.34, 0.66, 0.27, 0.73]
+const LABEL_STOPS = [0.5, 0.42, 0.58, 0.34, 0.66, 0.27, 0.73, 0.2, 0.8]
+/** Sideways nudges (px) tried when every spot right on the edge is taken. */
+const LABEL_OFFSETS = [0, 14, -14, 26, -26, 38, -38]
+
+/** The unit normal of an edge at t (perpendicular to its direction there). */
+function normalAt(geo: EdgeGeometry, t: number): Point {
+  const a = pointOnEdge(geo, Math.max(0, t - 0.02))
+  const b = pointOnEdge(geo, Math.min(1, t + 0.02))
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const len = Math.hypot(dx, dy)
+  return len > 0 ? { x: -dy / len, y: dx / len } : { x: 0, y: 0 }
+}
+
+export interface LabelSpot extends Point {
+  /** False when no spot was free: the label would sit on a card or another label. */
+  clear: boolean
+}
+
+/**
+ * Find each edge label a spot along its edge (or nudged just beside it) that collides with neither a node nor an
+ * earlier label. When every spot is taken, the least crowded one is returned with `clear: false`, so the caller
+ * can choose not to draw it over a card. Spots are in input order.
+ */
+export function placeEdgeLabelSpots(
+  labels: readonly { geo: EdgeGeometry; width: number; height: number }[],
+  obstacles: readonly Rect[],
+  gap = 3,
+): LabelSpot[] {
+  const placed: Rect[] = [...obstacles]
+  return labels.map(({ geo, width, height }) => {
+    let best: { p: Point; box: Rect; cost: number } | null = null
+    search: for (const off of LABEL_OFFSETS) {
+      for (const t of LABEL_STOPS) {
+        const on = pointOnEdge(geo, t)
+        const n = off ? normalAt(geo, t) : { x: 0, y: 0 }
+        const p = { x: on.x + n.x * off, y: on.y + n.y * off }
+        const box = { x: p.x - width / 2 - gap, y: p.y - height / 2 - gap, width: width + 2 * gap, height: height + 2 * gap }
+        let cost = 0
+        for (const r of placed) cost += overlapArea(box, r)
+        // Prefer the edge itself: a nudged label only wins when it is clear.
+        if (!best || cost < best.cost) best = { p, box, cost }
+        if (cost === 0) break search
+      }
+    }
+    if (!best) return { x: geo.labelX, y: geo.labelY, clear: true }
+    if (best.cost === 0) placed.push(best.box)
+    return { x: best.p.x, y: best.p.y, clear: best.cost === 0 }
+  })
+}
 
 /**
  * Slide each edge label along its edge to the first spot that collides with neither a node nor an earlier label
@@ -458,21 +529,56 @@ export function placeEdgeLabels(
   obstacles: readonly Rect[],
   gap = 3,
 ): Point[] {
-  const placed: Rect[] = [...obstacles]
-  return labels.map(({ geo, width, height }) => {
-    let best: { p: Point; box: Rect; cost: number } | null = null
-    for (const t of LABEL_STOPS) {
-      const p = pointOnEdge(geo, t)
-      const box = { x: p.x - width / 2 - gap, y: p.y - height / 2 - gap, width: width + 2 * gap, height: height + 2 * gap }
-      let cost = 0
-      for (const r of placed) cost += overlapArea(box, r)
-      if (!best || cost < best.cost) best = { p, box, cost }
-      if (cost === 0) break
+  return placeEdgeLabelSpots(labels, obstacles, gap).map(({ x, y }) => ({ x, y }))
+}
+
+/** The rectangles an edge passes over (sampled along its length, ends excluded), in the order it meets them. */
+export function edgeCrossings(geo: EdgeGeometry, rects: readonly Rect[], margin = 4): Rect[] {
+  const hits: Rect[] = []
+  for (let t = 0.04; t < 0.97; t += 0.02) {
+    const p = pointOnEdge(geo, t)
+    for (const r of rects) {
+      if (hits.includes(r)) continue
+      if (p.x > r.x - margin && p.x < r.x + r.width + margin && p.y > r.y - margin && p.y < r.y + r.height + margin) hits.push(r)
     }
-    if (!best) return { x: geo.labelX, y: geo.labelY }
-    placed.push(best.box)
-    return best.p
-  })
+  }
+  return hits
+}
+
+/** Whether an edge passes over any of the given rectangles; returns the first one it meets. */
+export function edgeCrosses(geo: EdgeGeometry, rects: readonly Rect[], margin = 4): Rect | null {
+  return edgeCrossings(geo, rects, margin)[0] ?? null
+}
+
+const BENDS = [30, 50, 75, 105, 140, 185]
+
+/**
+ * An edge between two cards that bows around any other card in its way: the straight (or requested) curve first,
+ * then gentler-to-stronger bends, starting on the side away from the first obstacle. When no bend is fully clear,
+ * the one crossing the fewest cards wins (the gentlest among equals).
+ */
+export function routeAround(a: Rect, b: Rect, others: readonly Rect[], bend = 0): EdgeGeometry {
+  const first = rectEdgeGeometry(a, b, bend)
+  const hits = edgeCrossings(first, others)
+  if (!hits.length) return first
+  const ca = rectCenter(a)
+  const cb = rectCenter(b)
+  const ch = rectCenter(hits[0])
+  // Which side of the line A→B the obstacle is on; bow the other way (rectEdgeGeometry bends toward +normal).
+  const cross = (cb.x - ca.x) * (ch.y - ca.y) - (cb.y - ca.y) * (ch.x - ca.x)
+  const away = cross > 0 ? 1 : -1
+  const tries = [first]
+  for (const mag of BENDS) for (const side of [away, -away]) tries.push(rectEdgeGeometry(a, b, bend + side * mag))
+  // Clear with a little air first, then merely clear (grazing a corner beats running through a card).
+  for (const margin of [4, 0]) {
+    for (const geo of tries) if (!edgeCrossings(geo, others, margin).length) return geo
+  }
+  let best = { geo: first, count: Infinity }
+  for (const geo of tries) {
+    const count = edgeCrossings(geo, others, 0).length
+    if (count < best.count) best = { geo, count }
+  }
+  return best.geo
 }
 
 /** Rough pill size for an edge label (11px text). */

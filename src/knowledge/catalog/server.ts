@@ -238,6 +238,18 @@ export const SERVER_ENTRIES: TechKnowledgeEntry[] = [
     },
     files: ['*.proto', 'buf.yaml', 'buf.gen.yaml'],
   },
+  {
+    // Also chosen by detectTechStack when code only uses a database driver's BSON sub-package (gin's bson.go).
+    id: 'bson',
+    name: 'BSON',
+    category: 'api',
+    importance: 'supporting',
+    description: 'A compact, computer-friendly way of writing information down so it can be saved or sent between programs. It comes from the MongoDB database, but works on its own as a data format.',
+    analogy: 'Like shorthand: the same message as a long letter, written in a quicker code that machines read easily.',
+    url: 'https://bsonspec.org',
+    packages: { npm: ['bson'] },
+    imports: { go: ['go.mongodb.org/mongo-driver/bson', 'go.mongodb.org/mongo-driver/v2/bson', 'gopkg.in/mgo.v2/bson'] },
+  },
 
   // ── Python web ────────────────────────────────────────────────────────────
   {

@@ -3,7 +3,7 @@ import { basename, depthOf } from '@/core/paths'
 import type { DependencyRef, Ecosystem, ManifestInfo, TechKnowledgeEntry } from './types'
 import { TECH_CATALOG } from './tech'
 import { LANGUAGE_INFO, NON_CODE_LANGUAGES, languageSlug, languageTechId } from './catalog/languages'
-import { isPeripheralPath } from './parsers/util'
+import { docsSiteRoots, inDocsSite, isPeripheralPath } from './parsers/util'
 
 export interface DetectTechInput {
   paths: string[]
@@ -11,7 +11,20 @@ export interface DetectTechInput {
   manifests: ManifestInfo
   languages: LanguageStat[]
   /** External package names actually imported by source files (normalized), with counts. */
-  importedPackages?: { name: string; count: number }[]
+  importedPackages?: ImportedPackage[]
+}
+
+export interface ImportedPackage {
+  name: string
+  /** Files that import it. */
+  count: number
+  /**
+   * Of those, files that are the project's own running code (not tests, examples, docs or vendored copies).
+   * Defaults to `count`. Only these make a package "really used": a dev tool imported by the examples is not a main tool.
+   */
+  coreCount?: number
+  /** The import paths used for it ("go.mongodb.org/mongo-driver/v2/bson"), so sub-package-only use can be told apart. */
+  specifiers?: string[]
 }
 
 const ECOSYSTEMS: readonly Ecosystem[] = ['npm', 'pypi', 'go', 'cargo', 'gem', 'composer', 'maven', 'nuget', 'pub', 'cocoapods', 'swift', 'conda']
@@ -21,6 +34,12 @@ const LANGUAGE_THRESHOLD = 5
 /** Undeclared packages must be imported by at least this many files to count (see detectTechStack step 2). */
 const UNDECLARED_IMPORT_MIN_FILES = 3
 const MAX_EVIDENCE = 6
+/**
+ * Import paths that only use a database driver's data-format helpers (BSON encoding) rather than the database itself:
+ * gin encodes BSON with go.mongodb.org/mongo-driver/v2/bson but never talks to MongoDB.
+ */
+const CODEC_SUBPATH = /(?:^|\/)bson(?:\/|$)/i
+const CODEC_TECH_ID = 'bson'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lookup indexes (built once, lazily)
@@ -328,7 +347,7 @@ const PYPROJECT_TOOLS: [RegExp, string, string][] = [
 const K8S_KIND = /^kind:[ \t]*(Deployment|Service|StatefulSet|DaemonSet|Ingress|ConfigMap|CronJob|Job|Pod|Namespace|HorizontalPodAutoscaler|PersistentVolumeClaim)[ \t]*$/m
 
 /** Scan downloaded files for technology clues that file names and manifests miss. */
-function contentSignals(files: Record<string, string>): SignalHit[] {
+function contentSignals(files: Record<string, string>, siteRoots: ReadonlySet<string> = new Set()): SignalHit[] {
   const hits: SignalHit[] = []
   const counts = new Map<string, { first: string; n: number; label: string }>()
   const countHit = (id: string, path: string, label: string) => {
@@ -337,7 +356,7 @@ function contentSignals(files: Record<string, string>): SignalHit[] {
     else counts.set(id, { first: path, n: 1, label })
   }
   for (const [path, text] of Object.entries(files)) {
-    if (typeof text !== 'string' || !text || isPeripheralPath(path)) continue
+    if (typeof text !== 'string' || !text || isPeripheralPath(path) || inDocsSite(path, siteRoots)) continue
     const lowerBase = basename(path).toLowerCase()
     const ext = lowerBase.includes('.') ? lowerBase.slice(lowerBase.lastIndexOf('.') + 1) : ''
     const sample = text.length > 200_000 ? text.slice(0, 200_000) : text
@@ -426,10 +445,17 @@ interface Accumulator {
   runtime: boolean
   peer: boolean
   dev: boolean
+  /** Files of the project's own running code that import it. */
   imported: number
+  /** Files that import it anywhere, tests and examples included. */
+  importedAnywhere: number
+  /** A database matched only through its data-format sub-package (…/bson). */
+  codecOnly: boolean
   /** Imported by code although an ecosystem with a package list doesn't declare it (often example or optional code). */
   undeclaredImport: boolean
   manifests: Set<string>
+  /** Every manifest that lists it belongs to the documentation website. */
+  siteOnly: boolean
   files: { first: string; n: number } | null
   content: boolean
   languageShare: number
@@ -501,7 +527,25 @@ export function detectTechStack(input: DetectTechInput): TechItem[] {
   const get = (entry: TechKnowledgeEntry): Accumulator => {
     let a = acc.get(entry.id)
     if (!a) {
-      a = { entry, manifestEvidence: [], evidence: [], score: 0, runtime: false, peer: false, dev: false, imported: 0, undeclaredImport: false, manifests: new Set(), files: null, content: false, languageShare: 0, implied: false }
+      a = {
+        entry,
+        manifestEvidence: [],
+        evidence: [],
+        score: 0,
+        runtime: false,
+        peer: false,
+        dev: false,
+        imported: 0,
+        importedAnywhere: 0,
+        codecOnly: false,
+        undeclaredImport: false,
+        manifests: new Set(),
+        siteOnly: true,
+        files: null,
+        content: false,
+        languageShare: 0,
+        implied: false,
+      }
       acc.set(entry.id, a)
     }
     return a
@@ -510,6 +554,10 @@ export function detectTechStack(input: DetectTechInput): TechItem[] {
     if (!a.evidence.includes(text)) a.evidence.push(text)
   }
 
+  const paths = Array.isArray(input.paths) ? input.paths : []
+  // A documentation website's own package list (site/package.json) says what the docs site needs, not the project.
+  const siteRoots = docsSiteRoots(paths)
+
   // 1. Declared dependencies.
   const deps = Array.isArray(input.manifests?.dependencies) ? input.manifests.dependencies : []
   const declaredEcosystems = new Set<Ecosystem>()
@@ -517,12 +565,15 @@ export function detectTechStack(input: DetectTechInput): TechItem[] {
     if (!dep || typeof dep.name !== 'string' || !ECOSYSTEMS.includes(dep.ecosystem)) continue
     declaredEcosystems.add(dep.ecosystem === 'conda' ? 'pypi' : dep.ecosystem)
     if (dep.ecosystem === 'npm' && dep.name.startsWith('@types/')) continue
+    const forDocsSite = typeof dep.source === 'string' && inDocsSite(dep.source, siteRoots)
     for (const entry of matchDependency(dep.ecosystem, dep.name)) {
       const a = get(entry)
-      const line = evidenceFor(dep)
+      const line = forDocsSite ? `${evidenceFor(dep)} (docs website)` : evidenceFor(dep)
       if (!a.manifestEvidence.includes(line)) a.manifestEvidence.push(line)
       a.manifests.add(dep.source)
-      if (dep.section === 'peerDependencies') a.peer = true
+      if (!forDocsSite) a.siteOnly = false
+      if (forDocsSite) a.dev = true
+      else if (dep.section === 'peerDependencies') a.peer = true
       else if (dep.dev) a.dev = true
       else a.runtime = true
     }
@@ -547,23 +598,34 @@ export function detectTechStack(input: DetectTechInput): TechItem[] {
     }
     if (!entry || !matchedEco) continue
     const count = Math.max(1, Math.round(pkg.count || 1))
+    const core = Math.max(0, Math.min(count, Math.round(typeof pkg.coreCount === 'number' && Number.isFinite(pkg.coreCount) ? pkg.coreCount : count)))
+    // Only a database's data-format helpers are used (BSON), not the database itself.
+    const specs = Array.isArray(pkg.specifiers) ? pkg.specifiers.filter((x): x is string => typeof x === 'string' && x.length > 0) : []
+    const codec = entry.category === 'database' ? index.byId.get(CODEC_TECH_ID) : undefined
+    if (codec && specs.length > 0 && specs.every((x) => CODEC_SUBPATH.test(x))) {
+      get(entry).codecOnly = true
+      const c = get(codec)
+      c.imported = Math.max(c.imported, core)
+      c.importedAnywhere = Math.max(c.importedAnywhere, count)
+      continue
+    }
     const declared = acc.has(entry.id) && acc.get(entry.id)!.manifests.size > 0
     if (!declared && declaredEcosystems.has(matchedEco)) {
       // The project lists its packages but not this one: likely used only by examples, scripts or optional code.
-      if (count < UNDECLARED_IMPORT_MIN_FILES) continue
+      if (core < UNDECLARED_IMPORT_MIN_FILES) continue
       get(entry).undeclaredImport = true
     }
     const a = get(entry)
-    a.imported = Math.max(a.imported, count)
+    a.imported = Math.max(a.imported, core)
+    a.importedAnywhere = Math.max(a.importedAnywhere, count)
   }
 
-  // 3. Telltale files anywhere in the tree.
+  // 3. Telltale files anywhere in the tree (not in examples, vendored copies or the docs website).
   const fileHit = (entry: TechKnowledgeEntry, path: string) => {
     const a = get(entry)
     if (a.files) a.files.n++
     else a.files = { first: path, n: 1 }
   }
-  const paths = Array.isArray(input.paths) ? input.paths : []
   const fi = index.files
   for (const path of paths) {
     if (typeof path !== 'string' || !path) continue
@@ -577,16 +639,31 @@ export function detectTechStack(input: DetectTechInput): TechItem[] {
     for (const { re, entry } of fi.globs) if (re.test(base)) matched.push(entry)
     if (fi.pathQuick && lower.includes('/') && fi.pathQuick.test(lower)) for (const { re, entry } of fi.pathPatterns) if (re.test(lower)) matched.push(entry)
     if (matched.length === 0 || isPeripheralPath(path)) continue
-    for (const e of new Set(matched)) fileHit(e, path)
+    // Inside the docs website only the docs tools themselves count.
+    const docsSite = inDocsSite(path, siteRoots)
+    for (const e of new Set(matched)) if (!docsSite || e.category === 'docs') fileHit(e, path)
   }
 
   // 4. Clues inside downloaded files.
-  for (const hit of contentSignals(input.files ?? {})) {
+  for (const hit of contentSignals(input.files ?? {}, siteRoots)) {
     const entry = index.byId.get(hit.id)
     if (!entry) continue
     const a = get(entry)
     a.content = true
     addEvidence(a, hit.evidence)
+  }
+
+  // 4b. A database whose driver is only there for its data format (BSON): the format is the real technology.
+  for (const a of [...acc.values()]) {
+    if (!a.codecOnly || a.imported > 0 || a.content) continue
+    const c = acc.get(CODEC_TECH_ID)
+    if (!c) continue
+    for (const line of a.manifestEvidence) if (!c.manifestEvidence.includes(line)) c.manifestEvidence.push(line)
+    for (const m of a.manifests) c.manifests.add(m)
+    c.runtime ||= a.runtime
+    c.dev ||= a.dev
+    c.siteOnly &&= a.siteOnly
+    acc.delete(a.entry.id)
   }
 
   // 5. Programming languages (≥ 5% of the code).
@@ -637,7 +714,13 @@ export function detectTechStack(input: DetectTechInput): TechItem[] {
     const evidence: string[] = a.manifestEvidence.slice(0, 3)
     if (a.manifestEvidence.length > 3) evidence.push(`and ${a.manifestEvidence.length - 3} more package lists`)
     if (a.files) evidence.push(a.files.n === 1 ? a.files.first : `${a.files.first} and ${a.files.n - 1} more`)
+    // Only tests, examples or the docs website need it (a dev tool the examples import): helpful, not a main tool.
+    // Runtime dependencies stay as they are: C# and Java code often uses a package without naming it in an import.
+    const sideOnly =
+      !a.runtime && !a.peer && a.imported === 0 && a.files === null && !a.content && !a.implied && (a.importedAnywhere > 0 || (a.manifests.size > 0 && a.siteOnly))
     if (a.imported > 0) evidence.push(`used in ${a.imported} ${a.imported === 1 ? 'file' : 'files'}`)
+    else if (a.importedAnywhere > 0 && sideOnly) evidence.push(`only used by tests, examples or docs (${a.importedAnywhere} ${a.importedAnywhere === 1 ? 'file' : 'files'})`)
+    else if (a.importedAnywhere > 0) evidence.push(`used in ${a.importedAnywhere} ${a.importedAnywhere === 1 ? 'file' : 'files'}`)
     for (const e of a.evidence) if (!evidence.includes(e)) evidence.push(e)
     if (evidence.length === 0) continue
 
@@ -656,6 +739,8 @@ export function detectTechStack(input: DetectTechInput): TechItem[] {
     let importance: TechItem['importance'] = a.entry.importance
     if (a.entry.category === 'language') {
       importance = a.languageShare >= LANGUAGE_THRESHOLD || (qualifying.length === 1 && a.languageShare > 0) ? 'core' : a.runtime || a.peer ? 'supporting' : 'tooling'
+    } else if (sideOnly) {
+      importance = 'tooling'
     } else if ((!usedForReal && a.dev) || (a.undeclaredImport && !a.runtime && !a.peer && a.files === null && !a.content)) {
       importance = importance === 'core' ? 'supporting' : 'tooling'
     }

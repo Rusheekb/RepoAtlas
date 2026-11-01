@@ -16,7 +16,8 @@ export function ViewHeader({ emoji, title, hint, actions, className }: ViewHeade
   return (
     <header className={cn('flex flex-wrap items-end justify-between gap-x-6 gap-y-3', className)}>
       <div className="min-w-0 flex-[1_1_22rem]">
-        <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+        {/* Focus moves here when the reader switches views (see RepoLayout), so screen readers announce the new view. */}
+        <h1 tabIndex={-1} className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight text-ink outline-none sm:text-3xl">
           <span className="text-[0.85em] leading-none" aria-hidden>
             {emoji}
           </span>

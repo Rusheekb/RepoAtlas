@@ -11,6 +11,7 @@ import { Composer, type ComposerHandle } from '@/components/views/reading/Compos
 import { suggestedQuestions, type SuggestedQuestion } from '@/components/views/reading/suggestions'
 import { ViewHeader } from '@/components/views/visual/ViewHeader'
 import { VIEW_INFO } from '@/core/labels'
+import { useExplain } from '@/state/explain'
 import { useAnalysis } from '@/state/repo'
 import { useUi } from '@/state/ui'
 import '@/components/views/reading/reading.css'
@@ -88,6 +89,7 @@ export default function AskPage() {
   const hasKey = useHasAiKey()
   const chat = useChat()
   const { go } = useRepoNav()
+  const openExplain = useExplain((s) => s.open)
   const openSettings = useUi((s) => s.openSettings)
   const [params] = useSearchParams()
   const [draft, setDraft] = useState(() => params.get('q') ?? '')
@@ -108,12 +110,18 @@ export default function AskPage() {
     (code: string) => {
       const path = normalizeCodeRef(code)
       if (!(path in analysis.files)) return false
+      // While Claude is still writing, stay here and show the file in the side panel, so the reader can keep
+      // watching the answer arrive.
+      if (busy) {
+        openExplain({ type: 'file', path })
+        return true
+      }
       const m = /:(\d+)(?:-(\d+))?$|#L(\d+)/.exec(code.trim())
       const line = m ? (m[1] ?? m[3]) : undefined
       go('explore', { file: path, line })
       return true
     },
-    [analysis.files, go],
+    [analysis.files, busy, go, openExplain],
   )
 
   // Follow the conversation as it grows, unless the reader scrolled up to re-read something.

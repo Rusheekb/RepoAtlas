@@ -1,7 +1,8 @@
 import type { LearningStep, ModuleInfo, RepoAnalysis } from '@/core/types'
 import { ROOT_MODULE_ID } from '@/core/types'
 import { basename } from '@/core/paths'
-import { count, firstSentence, safeName, sentence, wordCount } from './structure/text'
+import { capitalize, count, firstSentence, safeName, sentence, wordCount } from './structure/text'
+import { relianceOf, relianceText } from './graph'
 
 type PathInput = Omit<RepoAnalysis, 'learningPath' | 'starterConcepts' | 'starterTours'>
 
@@ -37,7 +38,7 @@ export function rankModules(analysis: Pick<RepoAnalysis, 'modules' | 'moduleEdge
  * open the main entry point → visit the 2–4 most important modules (by size/centrality) → a hub file → take a tour →
  * test yourself. Each step has a plain-English "why" and a rough reading time.
  */
-export function buildLearningPath(analysis: PathInput): LearningStep[] {
+export function buildLearningPath(analysis: PathInput, options: { name?: string } = {}): LearningStep[] {
   const steps: LearningStep[] = []
   const used = new Set<string>()
   const push = (s: LearningStep) => {
@@ -45,7 +46,8 @@ export function buildLearningPath(analysis: PathInput): LearningStep[] {
     used.add(s.id)
     steps.push(s)
   }
-  const repo = safeName(analysis.meta.repo || 'this project', 40)
+  // The same name the overview uses ("httpie" for the httpie/cli repository).
+  const repo = safeName(options.name?.trim() || analysis.meta.repo || 'this project', 40)
 
   if (analysis.readme) {
     const words = wordCount(analysis.readme.content)
@@ -100,9 +102,10 @@ export function buildLearningPath(analysis: PathInput): LearningStep[] {
   picks.forEach((m) => {
     const start = m.keyFiles.find((p) => p !== entry)
     const lead = sentence(firstSentence(m.description))
+    // Only the main code is ranked (tests, docs and examples are left out), so say so: docs/ may well be bigger.
     const why =
       m.lines === biggest && biggest > 0
-        ? 'It’s the biggest part of the project.'
+        ? 'It’s the biggest part of the main code.'
         : m.id === mostUsed
           ? 'More of the project relies on it than on any other part.'
           : (incoming.get(m.id) ?? 0) > 0
@@ -119,10 +122,12 @@ export function buildLearningPath(analysis: PathInput): LearningStep[] {
 
   if (hub && !used.has(`file:${hub}`)) {
     const f = analysis.files[hub]
+    const reliance = relianceOf(f, analysis.files)
     push({
       id: `file:${hub}`,
       title: `Meet the most relied-on file: ${basename(hub)}`,
-      description: `${count(f.importedBy.length, 'other file')} use it, so understanding it makes the rest of the code much easier to follow.`,
+      // Same count as the overview's "most relied-on file" and the file cards.
+      description: `${capitalize(relianceText(reliance))} ${reliance.total === 1 ? 'uses' : 'use'} it, so understanding it makes the rest of the code much easier to follow.`,
       target: { type: 'file', path: hub },
       minutes: fileMinutes(f.lines),
     })

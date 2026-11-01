@@ -27,7 +27,9 @@ import {
   folderTrail,
   layoutTreemap,
   normalizeFolder,
+  linesMatchArea,
   parentFolder,
+  tileSizeText,
   type TreemapDatum,
   type TreemapRect,
 } from './treemapData'
@@ -52,16 +54,19 @@ export interface CodeTreemapProps {
   showLegend?: boolean
 }
 
-const TILE_TINT = 55 // % of the identity color mixed into the surface (keeps ink text readable in both themes)
+// % of the identity color mixed into the surface: strong enough that neighboring layers stay tellable apart, light
+// enough that ink labels keep at least 5:1 contrast on every layer color in both themes.
+const TILE_TINT = 65
 const NEUTRAL = 'var(--layer-other)'
 
 function tint(color: string): string {
   return `color-mix(in oklab, ${color} ${TILE_TINT}%, var(--surface))`
 }
 
+const SIZE_FORMAT = { compact: formatCompact, bytes: formatBytes }
+
 function sizeText(d: TreemapDatum, sizeBy: 'lines' | 'bytes'): string {
-  if (sizeBy === 'bytes' || d.lines <= 0) return formatBytes(d.bytes)
-  return `${formatCompact(d.lines)} lines`
+  return tileSizeText(d, sizeBy, SIZE_FORMAT)
 }
 
 function itemLabel(d: TreemapDatum, sizeBy: 'lines' | 'bytes'): string {
@@ -69,7 +74,9 @@ function itemLabel(d: TreemapDatum, sizeBy: 'lines' | 'bytes'): string {
     const role = (ROLE_INFO[d.file.role] ?? ROLE_INFO.other).label
     return `${d.name}: ${role}, ${sizeText(d, sizeBy)}. Press Enter to open.`
   }
-  return `Folder ${d.name}: ${pluralize(d.fileCount, 'file')}, ${sizeText(d, sizeBy)}. Press Enter to zoom in.`
+  const files = pluralize(d.fileCount, 'file')
+  const size = sizeText(d, sizeBy)
+  return `Folder ${d.name}: ${size === files ? files : `${files}, ${size}`}. Press Enter to zoom in.`
 }
 
 /**
@@ -196,7 +203,12 @@ export function CodeTreemap({
         color: colorOf(d),
         rows: [
           { value: pluralize(d.fileCount, 'file') },
-          d.lines > 0 ? { value: formatNumber(d.lines), label: 'lines of code' } : { value: formatBytes(d.bytes), label: 'in size' },
+          ...(linesMatchArea(d)
+            ? [{ value: formatNumber(d.lines), label: d.lines === 1 ? 'line of code' : 'lines of code' }]
+            : [
+                { value: formatBytes(d.bytes), label: 'in size' },
+                ...(d.lines > 0 ? [{ value: formatNumber(d.lines), label: 'lines in the files we read' }] : []),
+              ]),
           { value: `Mostly ${mostly}`, color: colorOf(d) },
         ],
         hint: 'Click to zoom in',
@@ -343,7 +355,7 @@ export function CodeTreemap({
         const sub = fitLabel(d.kind === 'aggregate' ? pluralize(d.fileCount, 'file') : sizeText(d, sizeBy), w - 10, 6)
         if (sub)
           out.push(
-            <text key={`ls:${d.kind}${d.key}`} x={r.x0 + 5} y={r.y0 + 26} className="tm-label" style={{ fill: 'var(--ink-2)', fontSize: 10.5 }}>
+            <text key={`ls:${d.kind}${d.key}`} x={r.x0 + 5} y={r.y0 + 26} className="tm-label" style={{ fill: 'var(--ink)', fontSize: 10.5 }}>
               {sub}
             </text>,
           )

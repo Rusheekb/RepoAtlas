@@ -1,6 +1,7 @@
 export * from './types'
 export { TECH_CATALOG } from './tech'
 export { parseManifests } from './manifests'
-export { detectTechStack, lookupPackage, getTech, describeLanguage, normalizePackageName, type DetectTechInput } from './detectTech'
+export { detectTechStack, lookupPackage, getTech, describeLanguage, normalizePackageName, type DetectTechInput, type ImportedPackage } from './detectTech'
+export { docsSiteRoots, inDocsSite } from './parsers/util'
 export { GLOSSARY, getTerm, findRelevantTerms, findTermsInText, STOPWORD_SENSITIVE_TERMS } from './glossary'
 export { FOLDER_ROLES, describeFolder } from './folders'

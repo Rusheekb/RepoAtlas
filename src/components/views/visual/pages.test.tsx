@@ -23,7 +23,14 @@ vi.mock('@/components/graphs', async (importOriginal) => {
   return {
     ...actual,
     ArchitectureGraph: (p: ArchitectureGraphProps) => (
-      <div data-testid="architecture-graph" data-direction={p.direction} data-selected={p.selectedId ?? ''} data-highlight={(p.highlightIds ?? []).join(',')}>
+      <div
+        data-testid="architecture-graph"
+        data-direction={p.direction}
+        data-selected={p.selectedId ?? ''}
+        data-highlight={(p.highlightIds ?? []).join(',')}
+        data-reserve-top={p.reserve?.top ?? 0}
+        data-controls={String(p.showControls ?? true)}
+      >
         {p.modules.map((m) => (
           <span key={m.id}>
             <button type="button" onClick={() => p.onSelect?.(m.id)}>{`node ${m.id}`}</button>
@@ -37,7 +44,7 @@ vi.mock('@/components/graphs', async (importOriginal) => {
       </div>
     ),
     FileGraph: (p: FileGraphProps) => (
-      <div data-testid="file-graph" data-neighbors={String(Boolean(p.showNeighbors))}>
+      <div data-testid="file-graph" data-neighbors={String(Boolean(p.showNeighbors))} data-max={p.maxNodes ?? ''} data-direction={p.direction}>
         {p.files.map((f) => (
           <span key={f.path}>
             <button type="button" onClick={() => p.onSelect?.(f.path)}>{`file ${f.path}`}</button>
@@ -200,6 +207,34 @@ describe('ArchitecturePage', () => {
 
     await user.click(screen.getByRole('button', { name: 'read src/ui/Button.tsx' }))
     expect(location()).toBe('/gh/acme/shop/explore?file=src%2Fui%2FButton.tsx')
+  })
+
+  it('keeps the top of the map free for the “See the files” button while a part is selected', async () => {
+    const user = userEvent.setup()
+    renderAt('/gh/acme/shop/map', <ArchitecturePage />)
+    expect(screen.getByTestId('architecture-graph')).toHaveAttribute('data-reserve-top', '0')
+    await user.click(screen.getByRole('button', { name: 'node src/ui' }))
+    expect(screen.getByRole('button', { name: /See the files in/ })).toBeInTheDocument()
+    expect(Number(screen.getByTestId('architecture-graph').getAttribute('data-reserve-top'))).toBeGreaterThan(0)
+  })
+
+  it('starts a big part with its best-connected files and offers the rest (regression: 120 cards at 0.2 zoom)', async () => {
+    const user = userEvent.setup()
+    const base = makeAnalysis()
+    const many = Array.from({ length: 55 }, (_, i) => `src/big/f${i}.ts`)
+    const files = { ...base.files }
+    for (const p of many) files[p] = { ...base.files[Object.keys(base.files)[0]], path: p, name: p.split('/').pop() as string, dir: 'src/big', moduleId: 'src/big' }
+    const big = { ...base.modules[0], id: 'src/big', name: 'big', path: 'src/big', files: many, fileCount: many.length }
+    const analysis = { ...base, files, modules: [...base.modules, big] }
+    useRepoStore.setState({ analysis, snapshot: makeSnapshot(analysis), status: 'ready', key: 'acme/shop' })
+    renderAt('/gh/acme/shop/map?module=src/big', <ArchitecturePage />)
+    expect(screen.getByTestId('file-graph')).toHaveAttribute('data-max', '40')
+    await user.click(screen.getByRole('button', { name: 'Show all 55 files' }))
+    expect(screen.getByTestId('file-graph')).toHaveAttribute('data-max', '')
+    expect(screen.getByRole('button', { name: /Just the 40 best-connected files/ })).toBeInTheDocument()
+    // The drill-down has its own arrow-direction toggle.
+    await user.click(screen.getByRole('radio', { name: /Top-down/ }))
+    expect(screen.getByTestId('file-graph')).toHaveAttribute('data-direction', 'TB')
   })
 
   it('Back returns from the drill-down to all parts', async () => {
@@ -501,6 +536,8 @@ describe('ToursPage', () => {
 
     // The small map highlights the step's part.
     expect(screen.getByTestId('architecture-graph')).toHaveAttribute('data-highlight', 'src')
+    // The small "Where this happens" map leaves out the zoom buttons, which would cover its cards.
+    expect(screen.getByTestId('architecture-graph')).toHaveAttribute('data-controls', 'false')
     expect(useProgress.getState().isSeen('acme/shop', 'tour:startup:step:1')).toBe(true)
   })
 

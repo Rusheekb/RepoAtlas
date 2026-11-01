@@ -1,14 +1,14 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Check, Eye, EyeOff, KeyRound, Laptop, LoaderCircle, Moon, ShieldCheck, SlidersHorizontal, Sparkles, Sun, Trash2, X } from 'lucide-react'
-import { clearAiCache, testConnection } from '@/ai'
-import { Button } from '@/components/ui'
+import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/shell/IconButton'
 import { cn } from '@/components/ui/cn'
 import { Callout, GitHubMark, OutboundLink } from '@/components/shell/bits'
 import { READING_LEVEL_ORDER } from '@/components/shell/ReadingLevelPicker'
 import { ANALYSIS_DEPTHS, CONTEXT_SIZES, DEFAULT_MODEL, MODELS, READING_LEVELS } from '@/core/labels'
 import type { AnalysisDepth, ContextSize, ModelId, ReadingLevel, ThemePref } from '@/core/types'
-import { clearSnapshotCache, formatResetTime, getRateLimitInfo, onRateLimitChange, type RateLimitInfo } from '@/github'
+import { getRateLimitInfo, onRateLimitChange, type RateLimitInfo } from '@/github/api'
+import { formatResetTime } from '@/github/errors'
 import { useProgress } from '@/state/progress'
 import { useSettings } from '@/state/settings'
 import { useUi, type SettingsSection } from '@/state/ui'
@@ -22,6 +22,36 @@ const SECTIONS: { id: SettingsSection; label: string; icon: ReactNode }[] = [
   { id: 'preferences', label: 'Preferences', icon: <SlidersHorizontal className="size-4" aria-hidden /> },
   { id: 'data', label: 'Privacy & data', icon: <ShieldCheck className="size-4" aria-hidden /> },
 ]
+
+/*
+ * Claude's code (the Anthropic SDK and friends) and the download cache are only needed once someone tests a key or
+ * clears saved data, so they are loaded on demand: the home page, which shows this dialog too, stays light.
+ */
+const loadAiClient = () => import('@/ai/client')
+const loadAiCache = () => import('@/ai/cache')
+const loadSnapshots = () => import('@/github/snapshot')
+
+/**
+ * Forget everything private RepoAtlas kept in this browser: downloaded code and Claude's answers about private
+ * repositories, and their Recent entries and progress. Used by "Forget my keys now" and when "Remember my keys" is
+ * turned off. Never throws. Exported for tests.
+ */
+export async function forgetPrivateRepos(): Promise<void> {
+  let names: string[] = []
+  try {
+    names = await (await loadSnapshots()).forgetPrivateData()
+  } catch {
+    /* storage unavailable: nothing was saved there either */
+  }
+  const repos = new Set([...names, ...useProgress.getState().recent.filter((r) => r.isPrivate).map((r) => r.fullName)])
+  useProgress.getState().forgetPrivateRepos(names)
+  try {
+    // `repos` also removes answers saved before private ones were kept apart.
+    await (await loadAiCache()).forgetPrivateAiData({ repos: [...repos] })
+  } catch {
+    /* ignore */
+  }
+}
 
 /** "Opus … (Recommended)" → the description without the note; the note becomes a badge instead. */
 function splitRecommended(description: string): { text: string; recommended: boolean } {
@@ -197,7 +227,12 @@ function AiSection() {
   const runTest = async () => {
     const id = ++testRun.current
     setTest({ state: 'testing', message: '' })
-    const result = await testConnection(apiKey, model)
+    let result: { ok: boolean; message: string }
+    try {
+      result = await (await loadAiClient()).testConnection(apiKey, model)
+    } catch {
+      result = { ok: false, message: 'Couldn’t reach Claude just now. Check your internet connection and try again.' }
+    }
     if (id !== testRun.current) return
     setTest({ state: result.ok ? 'ok' : 'fail', message: result.message })
   }
@@ -272,8 +307,10 @@ function AiSection() {
       />
 
       <Callout icon={<span aria-hidden>💳</span>} title="What does it cost?">
-        You pay Anthropic directly for what you use; RepoAtlas never sees your bill. A typical explanation costs a few cents with Opus, and
-        less with Sonnet or Haiku. Answers are saved on this device, so opening one again is free.
+        You pay Anthropic directly for what you use; RepoAtlas never sees your bill. With Opus and “Balanced”, the first answer about a
+        project costs about 40¢, because Claude reads the code first. Follow-up answers within the hour cost roughly 5–10¢ each, since
+        Claude remembers that code for an hour. Sonnet and Haiku cost less, and so does “Light”. Answers are saved on this device, so
+        opening one again is free.
       </Callout>
     </div>
   )
@@ -365,6 +402,7 @@ function GitHubSection() {
 
 function PreferencesSection() {
   const readingLevel = useSettings((s) => s.readingLevel)
+  const hasKey = useSettings((s) => s.anthropicApiKey.trim().length > 0)
   const theme = useSettings((s) => s.theme)
   const depth = useSettings((s) => s.analysisDepth)
   const set = useSettings((s) => s.set)
@@ -374,8 +412,12 @@ function PreferencesSection() {
         <p>Make RepoAtlas fit the way you like to learn.</p>
       </SectionIntro>
       <ChoiceCards<ReadingLevel>
-        legend="Explain things for…"
-        hint="Changes how Claude writes its explanations. Pick whatever feels comfortable; you can switch any time."
+        legend="Claude explains things for…"
+        hint={
+          hasKey
+            ? 'Changes how Claude writes its explanations. Pick whatever feels comfortable; you can switch any time.'
+            : 'Changes how Claude writes its explanations, once you add a Claude key. The built-in explanations stay the same.'
+        }
         value={readingLevel}
         columns={2}
         onChange={(v) => set({ readingLevel: v })}
@@ -409,7 +451,7 @@ function PreferencesSection() {
 
 /** Remove everything RepoAtlas saved in this browser except settings and keys. Exported for tests. */
 export async function clearSavedData(): Promise<void> {
-  await Promise.allSettled([clearSnapshotCache(), clearAiCache()])
+  await Promise.allSettled([loadSnapshots().then((m) => m.clearSnapshotCache()), loadAiCache().then((m) => m.clearAiCache())])
   useProgress.setState({ seen: {}, recent: [] })
 }
 
@@ -427,6 +469,18 @@ function DataSection() {
     setClearState('done')
   }
 
+  const toggleRemember = () => {
+    const next = !rememberKeys
+    set({ rememberKeys: next })
+    // Turning it off: nothing private should outlive this tab any more.
+    if (!next) void forgetPrivateRepos()
+  }
+
+  const forgetKeys = () => {
+    set({ anthropicApiKey: '', githubToken: '' })
+    void forgetPrivateRepos()
+  }
+
   return (
     <div className="space-y-6">
       <SectionIntro title="Privacy & data">
@@ -434,7 +488,7 @@ function DataSection() {
           {[
             'Everything runs in your browser. There is no RepoAtlas server, no account and no tracking.',
             'Project files come straight from GitHub. Questions for Claude go straight from your browser to Anthropic.',
-            'Your keys stay on this device and are only ever sent to GitHub and Anthropic.',
+            'Your keys stay in this browser and are only ever sent to GitHub and Anthropic.',
           ].map((t) => (
             <li key={t} className="flex items-start gap-2">
               <ShieldCheck className="mt-0.5 size-4 shrink-0 text-good-text" aria-hidden />
@@ -452,8 +506,8 @@ function DataSection() {
             </label>
             <p id={switchHint} className="mt-1 text-sm leading-relaxed text-ink-2">
               {rememberKeys
-                ? 'On: your keys are saved in this browser, so you won’t need to paste them again. Only keep this on for a computer you trust.'
-                : 'Off: your keys are kept only while this tab is open and forgotten when you close it. Turn this on to skip pasting them each time.'}
+                ? 'On: your keys are saved in this browser, so you won’t need to paste them again. They are stored in plain text, and other pages on this same web address can read them. Only keep this on for a computer you trust.'
+                : 'Off: your keys, and anything private you opened with them, are kept only while this tab is open and forgotten when you close it. Turn this on to skip pasting them each time (they would then be stored in plain text in this browser, readable by other pages on this same web address).'}
             </p>
           </div>
           <button
@@ -462,7 +516,7 @@ function DataSection() {
             role="switch"
             aria-checked={rememberKeys}
             aria-describedby={switchHint}
-            onClick={() => set({ rememberKeys: !rememberKeys })}
+            onClick={toggleRemember}
             className={cn('relative mt-0.5 inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors', rememberKeys ? 'border-transparent bg-brand' : 'border-line-strong bg-surface-3')}
           >
             <span
@@ -478,7 +532,7 @@ function DataSection() {
             variant="ghost"
             className="mt-3 -ml-2"
             icon={<X className="size-4" aria-hidden />}
-            onClick={() => set({ anthropicApiKey: '', githubToken: '' })}
+            onClick={forgetKeys}
           >
             Forget my keys now
           </Button>
@@ -592,6 +646,8 @@ function SettingsContent({ initial, onClose }: { initial: SettingsSection; onClo
           })}
         </div>
         <div
+          // A new section starts at its top, not wherever the previous one was scrolled to.
+          key={section}
           role="tabpanel"
           id={`${baseId}-panel`}
           aria-labelledby={`${baseId}-tab-${section}`}

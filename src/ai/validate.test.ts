@@ -1,4 +1,4 @@
-import { cleanEmoji, makePathResolver, normalizePath, snippetOccurs, toKebab, uniqueId, validateConceptMap, validateQuiz, validateTours } from './validate'
+import { cleanEmoji, makePathResolver, normalizeCategory, normalizePath, snippetOccurs, toKebab, uniqueId, validateConceptMap, validateQuiz, validateTours } from './validate'
 import { CONTENTS, makeFixture } from './testFixtures'
 
 describe('id helpers', () => {
@@ -176,5 +176,20 @@ describe('validateQuiz', () => {
       expect(q.answerIndex).toBeGreaterThanOrEqual(0)
       expect(q.answerIndex).toBeLessThan(q.options.length)
     }
+  })
+})
+
+describe('normalizeCategory', () => {
+  it('maps what Claude wrote onto a known category', () => {
+    expect(normalizeCategory('data')).toBe('data')
+    expect(normalizeCategory(' Technology ')).toBe('technology')
+    expect(normalizeCategory('tools')).toBe('technology')
+    expect(normalizeCategory('design pattern')).toBe('idea')
+    expect(normalizeCategory('User role')).toBe('actor')
+    expect(normalizeCategory('workflow')).toBe('process')
+    expect(normalizeCategory('nonsense')).toBe('idea')
+    expect(normalizeCategory(undefined)).toBe('idea')
+    expect(normalizeCategory('__proto__')).toBe('idea')
+    expect(normalizeCategory('constructor')).toBe('idea')
   })
 })

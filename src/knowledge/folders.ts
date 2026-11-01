@@ -1,7 +1,8 @@
 import type { Layer } from '@/core/types'
-import type { FolderRole } from './types'
+import type { FolderEvidence, FolderRole } from './types'
 
-const F = (role: string, emoji: string, layer: Layer, description: string): FolderRole => ({ role, description, emoji, layer })
+const F = (role: string, emoji: string, layer: Layer, description: string, requires?: FolderEvidence): FolderRole =>
+  requires ? { role, description, emoji, layer, requires } : { role, description, emoji, layer }
 
 /** Each role once, with every conventional folder name (lower-case) that means it. */
 const DEFINITIONS: [names: string[], role: FolderRole][] = [
@@ -13,7 +14,7 @@ const DEFINITIONS: [names: string[], role: FolderRole][] = [
   [['common', 'shared', 'base'], F('Shared code', '🤝', 'logic', 'Pieces used by many different parts of the project, kept in one place to avoid duplicates.')],
   [['utils', 'util', 'utilities', 'helpers', 'helper', 'misc', 'support'], F('Helpers', '🧰', 'logic', 'Small, handy tools used all over the code, like formatting dates or tidying text.')],
   [['internal'], F('Private code', '🔒', 'logic', 'Code meant only for this project’s own use, not for outside programs (a convention in Go and other languages).')],
-  [['pkg'], F('Reusable packages', '📦', 'logic', 'Go projects keep code here that other programs are welcome to reuse.')],
+  [['pkg'], F('Reusable packages', '📦', 'logic', 'Go projects keep code here that other programs are welcome to reuse.', 'go-code')],
   [['cmd'], F('Programs to run', '▶️', 'api', 'Each folder in here is a separate program you can start, such as a server or a command-line tool (a Go convention).')],
   [['main'], F('Main program code', '🏁', 'logic', 'The primary code: in Java and Kotlin projects the real app lives under src/main, and in Electron apps this is the behind-the-scenes "main process".')],
   [['engine', 'runtime'], F('Engine', '🚂', 'logic', 'The machinery that does the heavy lifting and runs everything else.')],
@@ -59,10 +60,10 @@ const DEFINITIONS: [names: string[], role: FolderRole][] = [
   [['notifications'], F('Notifications', '🔔', 'logic', 'Code that alerts people by email, text message or push notification.')],
   [['popup'], F('Extension pop-up', '🪟', 'ui', 'The small window that opens when you click a browser extension’s icon.')],
   [['content-scripts', 'contentscripts'], F('Page add-ons', '🧷', 'logic', 'Browser-extension code that runs inside the web pages you visit.')],
-  [['renderer'], F('App window', '🖼️', 'ui', 'The visible window of a desktop app (Electron), built like a web page.')],
-  [['preload'], F('Window bridge', '🌉', 'logic', 'A small safe bridge between a desktop app’s window and the computer’s system features.')],
+  [['renderer'], F('App window', '🖼️', 'ui', 'The visible window of a desktop app (Electron), built like a web page.', 'desktop-shell')],
+  [['preload'], F('Window bridge', '🌉', 'logic', 'A small safe bridge between a desktop app’s window and the computer’s system features.', 'desktop-shell')],
   [['src-tauri'], F('Desktop shell', '🖥️', 'logic', 'The Rust side of a Tauri desktop app, which talks to the computer on behalf of the interface.')],
-  [['scenes', 'levels'], F('Game scenes', '🎬', 'ui', 'The different screens or levels of a game.')],
+  [['scenes', 'levels'], F('Game scenes', '🎬', 'ui', 'The different screens or levels of a game.', 'game')],
 
   // ── App memory (state) ────────────────────────────────────────────────────
   [['store', 'stores', 'state', 'redux', 'vuex', 'pinia', 'zustand'], F('App memory', '🧠', 'logic', 'Where the app keeps track of shared information while it runs, like who is logged in or what is in the cart.')],
@@ -159,13 +160,13 @@ const DEFINITIONS: [names: string[], role: FolderRole][] = [
   [['workflows', '.circleci', '.gitlab', '.buildkite', 'ci', '.ci', '.azure-pipelines', '.woodpecker'], F('Automation pipelines', '🔁', 'infra', 'Instructions for robots that test, build and publish the project on every change.')],
   [['scripts', 'script', 'bin', 'hack', 'dev-scripts'], F('Scripts', '📜', 'infra', 'Small programs that automate chores like setting up, building or releasing the project.')],
   [['tools', 'tool', 'tooling', 'devtools', 'dev-tools'], F('Developer tools', '🔧', 'infra', 'Helper programs used while developing the project, not part of what users run.')],
-  [['build', 'builds', 'dist', 'out', 'output', 'target', 'release', 'releases', 'artifacts', '.next', '.nuxt', '.svelte-kit', '.output'], F('Build output', '🏗️', 'other', 'Files produced automatically from the source code. You don’t edit these; they are regenerated.')],
+  [['build', 'builds', 'dist', 'out', 'output', 'target', 'release', 'releases', 'artifacts', '.next', '.nuxt', '.svelte-kit', '.output'], F('Build output', '🏗️', 'other', 'Files produced automatically from the source code. You don’t edit these; they are regenerated.', 'generated')],
   [['generated', 'gen', '__generated__', 'codegen', 'autogen', 'auto-generated'], F('Generated code', '🤖', 'other', 'Code written automatically by a tool; it is recreated from its source, so it isn’t edited by hand.')],
   [['deploy', 'deployment', 'deployments'], F('Deployment', '🚀', 'infra', 'Instructions for putting the project live on servers or in the cloud.')],
   [['infra', 'infrastructure', 'ops', 'devops', 'iac'], F('Infrastructure', '🏗️', 'infra', 'Descriptions of the servers, networks and cloud services the project runs on.')],
   [['terraform', 'tf', 'pulumi', 'cdk'], F('Cloud blueprints', '🗺️', 'infra', 'Infrastructure-as-code files that create the project’s cloud servers and services automatically.')],
   [['k8s', 'kubernetes', 'kube', 'manifests', 'kustomize', 'overlays'], F('Kubernetes setup', '☸️', 'infra', 'Instructions for running the app’s containers on a Kubernetes cluster of servers.')],
-  [['helm', 'charts', 'chart'], F('Helm charts', '⛵', 'infra', 'Packaged, configurable Kubernetes setups for installing the app.')],
+  [['helm', 'charts', 'chart'], F('Helm charts', '⛵', 'infra', 'Packaged, configurable Kubernetes setups for installing the app.', 'helm-chart')],
   [['docker', '.docker', 'containers', 'container', 'dockerfiles'], F('Container setup', '📦', 'infra', 'Recipes for packing the app into containers that run the same on any computer.')],
   [['ansible', 'playbooks', 'roles', 'provisioning', 'puppet', 'chef', 'salt'], F('Server setup', '🛠️', 'infra', 'Step-by-step instructions that set up and configure servers automatically.')],
   [['nginx', 'apache', 'caddy', 'proxy'], F('Web server setup', '🚦', 'infra', 'Configuration for the web server that sits in front of the app and directs traffic.')],

@@ -9,6 +9,10 @@
  * Design tokens. Components use the semantic utilities (bg-canvas, text-ink, border-line …)
  * so both themes switch in one place. Layer colors are the validated categorical palette
  * (fixed order, light + dark steps) and are used for every "kind of code" encoding.
+ * Documentation (indigo) and Build & deploy (brown) were re-picked so no two layers look alike, even tinted on the
+ * code map: the set passes the palette validator in both modes, and every pair is at least as far apart as the
+ * palette's own closest anchors (orange/magenta in light, orange/yellow in dark). Layer identity is never color
+ * alone: legends, direct labels and tooltips name it.
  */
 :root {
   color-scheme: light;
@@ -18,9 +22,12 @@
   --surface-3: #e8e6e0;
   --line: #e2e0d9;
   --line-strong: #cfccc3;
+  /* Graph lines and arrowheads: at least 3:1 on the surface, so "A uses B" stays visible (WCAG 1.4.11). */
+  --edge: #8b887f;
   --ink: #1a1a19;
   --ink-2: #52514e;
-  --ink-3: #75736d;
+  /* Secondary text: at least 4.5:1 on canvas, surface-2 and brand-soft (4.7:1 on surface-3). */
+  --ink-3: #66645e;
   --brand: #4338ca;
   --brand-hover: #3730a3;
   --brand-soft: #eef0ff;
@@ -40,8 +47,8 @@
   --layer-data: #eda100;
   --layer-test: #e87ba4;
   --layer-config: #008300;
-  --layer-docs: #6250d6;
-  --layer-infra: #e34948;
+  --layer-docs: #5040a8;
+  --layer-infra: #9d6300;
   --layer-other: #9b9a94;
 
   --shadow-sm: 0 1px 2px rgb(20 20 19 / 0.06), 0 1px 1px rgb(20 20 19 / 0.04);
@@ -57,6 +64,7 @@
   --surface-3: #2c2c2a;
   --line: #31312e;
   --line-strong: #44443f;
+  --edge: #7d7c75;
   --ink: #f0efec;
   --ink-2: #c3c2b7;
   --ink-3: #9a998f;
@@ -79,8 +87,8 @@
   --layer-data: #c98500;
   --layer-test: #d55181;
   --layer-config: #008300;
-  --layer-docs: #9085e9;
-  --layer-infra: #e66767;
+  --layer-docs: #6b5fca;
+  --layer-infra: #9d6300;
   --layer-other: #6f6e68;
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);

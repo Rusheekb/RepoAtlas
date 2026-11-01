@@ -157,4 +157,69 @@ describe('detectProjectKind', () => {
   it('never throws on malformed manifests', () => {
     expect(() => run({ files: [], contents: { 'package.json': '{oops', 'manifest.json': 'null' } })).not.toThrow()
   })
+
+  it('calls a "command-line HTTP client for the API era" a command-line tool, not a library (HTTPie)', () => {
+    const files = [
+      makeFile('httpie/__init__.py'),
+      makeFile('httpie/__main__.py', { role: 'entry', isEntry: true }),
+      makeFile('httpie/core.py'),
+      makeFile('httpie/cli/argparser.py', { role: 'cli', layer: 'api' }),
+      makeFile('setup.cfg', { kind: 'config', role: 'config', layer: 'config' }),
+    ]
+    const k = run({
+      files,
+      repoName: 'cli',
+      description: '🥧 HTTPie CLI — modern, user-friendly command-line HTTP client for the API era. JSON support, colors, sessions, downloads, plugins & more.',
+      manifests: manifests({ projectNames: ['httpie'], entryHints: [{ path: 'httpie/__main__.py', reason: 'Runs when you type "http" in a terminal (setup.cfg)' }] }),
+      contents: { 'setup.cfg': '[metadata]\nname = httpie\n\n[options.entry_points]\nconsole_scripts =\n    http = httpie.__main__:main\n' },
+    })
+    expect(k.id).toBe('cli-tool')
+    expect(k.reasons.join(' ')).toMatch(/“http”/)
+  })
+
+  it('treats a Rust workspace whose root package builds a program as that program (ripgrep)', () => {
+    const files = [
+      makeFile('Cargo.toml', { kind: 'config', role: 'config', layer: 'config' }),
+      makeFile('crates/core/main.rs', { role: 'entry', isEntry: true }),
+      makeFile('crates/core/flags/mod.rs', { role: 'cli', layer: 'api' }),
+      ...['cli', 'globset', 'grep', 'ignore', 'matcher', 'printer', 'regex', 'searcher'].flatMap((c) => [
+        makeFile(`crates/${c}/Cargo.toml`, { kind: 'config', role: 'config', layer: 'config' }),
+        makeFile(`crates/${c}/src/lib.rs`),
+      ]),
+    ]
+    const cargo = '[package]\nname = "ripgrep"\n\n[[bin]]\nbench = false\npath = "crates/core/main.rs"\nname = "rg"\n\n[workspace]\nmembers = ["crates/*"]\n'
+    const k = run({
+      files,
+      repoName: 'ripgrep',
+      description: 'ripgrep recursively searches directories for a regex pattern while respecting your gitignore',
+      manifests: manifests({ workspaces: ['crates/*'] }),
+      contents: { 'Cargo.toml': cargo },
+    })
+    expect(k.id).toBe('cli-tool')
+    expect(k.reasons[0]).toMatch(/“rg” program/)
+  })
+
+  it('still calls a workspace of separate crates a collection', () => {
+    const files = ['a', 'b', 'c'].flatMap((c) => [makeFile(`crates/${c}/Cargo.toml`, { kind: 'config', role: 'config', layer: 'config' }), makeFile(`crates/${c}/src/lib.rs`)])
+    const k = run({ files: [makeFile('Cargo.toml', { kind: 'config' }), ...files], manifests: manifests({ workspaces: ['crates/*'] }), contents: { 'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\n' } })
+    expect(k.id).toBe('monorepo')
+  })
+
+  it('ignores framework files that only appear inside examples (Excalidraw’s examples/with-nextjs)', () => {
+    const files = [
+      makeFile('index.html', { kind: 'markup', role: 'page', layer: 'ui' }),
+      ...['A', 'B', 'C', 'D', 'E'].map((n) => makeFile(`src/components/${n}.tsx`, { role: 'component', layer: 'ui' })),
+      makeFile('examples/with-nextjs/next.config.js', { kind: 'config', role: 'config', layer: 'docs' }),
+    ]
+    const k = run({ files, manifests: manifests({ dependencies: deps('npm', ['react']) }) })
+    expect(k.reasons.join(' ')).not.toMatch(/Next\.js/)
+  })
+
+  it('reads a WordPress plugin header quickly, even after thousands of blank lines', () => {
+    const t0 = performance.now()
+    const k = run({ files: [makeFile('plugin.php', { language: 'PHP' })], contents: { 'plugin.php': `${'\n'.repeat(2990)}/*\n * Plugin Name: Hello` } })
+    expect(performance.now() - t0).toBeLessThan(200)
+    expect(k.id).toBe('unknown')
+    expect(run({ files: [makeFile('plugin.php', { language: 'PHP' })], contents: { 'plugin.php': '<?php\n/**\n * Plugin Name: Hello Dolly\n */' } }).id).toBe('plugin')
+  })
 })

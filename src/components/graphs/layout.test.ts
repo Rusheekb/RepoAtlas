@@ -1,16 +1,20 @@
 import {
   buildNeighbors,
   clipToRect,
+  edgeCrossings,
   edgeKey,
   edgeStrokeWidth,
+  gridColumnsFor,
   gridLayout,
   layoutForce,
   layoutLayered,
   mergeLinks,
   nearestInDirection,
   polylineMidpoint,
+  placeEdgeLabelSpots,
   rectEdgeGeometry,
   resolveOverlaps,
+  routeAround,
   routedEdgeGeometry,
   smoothPath,
   trimEnd,
@@ -281,5 +285,70 @@ describe('nearestInDirection', () => {
     expect(nearestInDirection('mid', centers, 'left')).toBe('upLeft')
     expect(nearestInDirection('farRight', centers, 'right')).toBeNull()
     expect(nearestInDirection('nope', centers, 'right')).toBeNull()
+  })
+})
+
+describe('unlinked files fill the canvas shape (regression: tall 3-column strips)', () => {
+  it('picks grid columns for the target shape, never narrower than the linked picture', () => {
+    // 102 test files that use nothing else, on a 2:1 canvas: a wide grid, not 3 columns × 34 rows.
+    const cols = gridColumnsFor(102, 212, 56, 16, 2)
+    expect(cols).toBeGreaterThanOrEqual(7)
+    const rows = Math.ceil(102 / cols)
+    const aspect = (cols * 228) / (rows * 72)
+    expect(aspect).toBeGreaterThan(1.4)
+    expect(aspect).toBeLessThan(3)
+    expect(gridColumnsFor(4, 212, 56, 16, 2, 2000)).toBe(4)
+    expect(gridColumnsFor(30, 212, 56, 16, 0.8)).toBeLessThan(gridColumnsFor(30, 212, 56, 16, 2))
+  })
+
+  it('lays out a mostly-unlinked folder roughly in the canvas shape', () => {
+    const files: SizedNode[] = Array.from({ length: 60 }, (_, i) => ({ id: `t${i}`, width: 212, height: 56 }))
+    const res = layoutLayered(files, [{ source: 't0', target: 't1' }], { direction: 'LR', gridGap: 16, targetAspect: 2 })
+    expect(res.width / res.height).toBeGreaterThan(1.2)
+    const rects = rectsOf(res, files)
+    for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) expect(overlaps(rects[i], rects[j])).toBe(false)
+  })
+})
+
+describe('concept map layout (regression: cramped cards, arrows under cards, labels on names)', () => {
+  const sized: SizedNode[] = [
+    { id: 'hub', width: 212, height: 74 },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: `n${i}`, width: 158, height: 54 })),
+  ]
+  const links = [
+    ...Array.from({ length: 9 }, (_, i) => ({ source: 'hub', target: `n${i}` })),
+    { source: 'n0', target: 'n5' },
+    { source: 'n2', target: 'n7' },
+  ]
+
+  it('keeps room for a relation label between every pair of cards and spreads out sideways', () => {
+    const res = layoutForce(sized, links)
+    const rects = rectsOf(res, sized)
+    for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) expect(overlaps(rects[i], rects[j], 33)).toBe(false)
+    expect(res.width).toBeGreaterThan(res.height)
+  })
+
+  it('bows an arrow around a card that sits in its way', () => {
+    const a = { x: 0, y: 0, width: 100, height: 40 }
+    const b = { x: 600, y: 0, width: 100, height: 40 }
+    const blocker = { x: 300, y: -5, width: 100, height: 50 }
+    expect(edgeCrossings(rectEdgeGeometry(a, b), [blocker])).toHaveLength(1)
+    const routed = routeAround(a, b, [blocker])
+    expect(routed.control).toBeDefined()
+    expect(edgeCrossings(routed, [blocker])).toHaveLength(0)
+    // Nothing in the way: a straight line.
+    expect(routeAround(a, b, []).control).toBeUndefined()
+  })
+
+  it('moves a label beside its edge when the spots on it are taken, and flags labels with no free spot', () => {
+    const geo = rectEdgeGeometry({ x: 0, y: 0, width: 100, height: 40 }, { x: 400, y: 0, width: 100, height: 40 })
+    // A card sits right on the middle of the edge.
+    const blocker = { x: 150, y: 5, width: 200, height: 30 }
+    const [spot] = placeEdgeLabelSpots([{ geo, width: 60, height: 20 }], [blocker])
+    expect(spot.clear).toBe(true)
+    expect(overlaps({ x: spot.x - 30, y: spot.y - 10, width: 60, height: 20 }, blocker)).toBe(false)
+    // Everything around the edge is covered: the label is flagged rather than silently drawn on a card.
+    const wall = { x: -100, y: -200, width: 800, height: 440 }
+    expect(placeEdgeLabelSpots([{ geo, width: 60, height: 20 }], [wall])[0].clear).toBe(false)
   })
 })

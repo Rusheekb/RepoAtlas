@@ -130,7 +130,20 @@ export function filesNamedIn(question: string, analysis: RepoAnalysis): string[]
     .map((f) => f.path)
 }
 
-function scoreFile(f: IndexedFile, terms: string[]): number {
+/** Tests, fixtures and type-checking stubs: rarely what a newcomer's question is about. */
+const TEST_PATH = /(^|\/)(tests?|__tests__|specs?|e2e|fixtures?|__mocks__|type_?checks?|typings?_tests?)\//i
+const TEST_NAME = /(^test_|_test\.|\.test\.|\.spec\.|_spec\.|^conftest\.py$)/i
+
+export function isTestLike(file: Pick<AnalyzedFile, 'path' | 'kind'>): boolean {
+  return file.kind === 'test' || TEST_PATH.test(file.path) || TEST_NAME.test(basename(file.path))
+}
+
+/** Does the question itself ask about tests? Then test files are fair game. */
+function asksAboutTests(terms: string[]): boolean {
+  return terms.some((t) => t.startsWith('test') || t === 'spec' || t === 'fixtur' || t === 'fixture' || t === 'mock')
+}
+
+function scoreFile(f: IndexedFile, terms: string[], testsWanted = false): number {
   let score = 0
   for (const t of terms) {
     if (matches(f.name, t)) score += 6
@@ -147,7 +160,9 @@ function scoreFile(f: IndexedFile, terms: string[]): number {
   if (file.fetched) score += 1
   if (file.isEntry) score += 1
   score += Math.min(2, Math.floor(file.importedBy.length / 5))
-  if (file.kind === 'test') score -= 2
+  // Tests mention everything they test, so they match almost any question. Unless the reader asks about tests,
+  // they only come after the real source files.
+  if (!testsWanted && isTestLike(file)) score = score * 0.25 - 2
   return score
 }
 
@@ -158,10 +173,11 @@ export function pickRelevantFiles(analysis: RepoAnalysis, question: string, max 
   const terms = queryTerms(question)
   if (!terms.length) return out
   const taken = new Set(out)
+  const testsWanted = asksAboutTests(terms)
   const scored: { path: string; score: number }[] = []
   for (const f of indexRepo(analysis).files) {
     if (taken.has(f.file.path)) continue
-    const score = scoreFile(f, terms)
+    const score = scoreFile(f, terms, testsWanted)
     if (score > 0) scored.push({ path: f.file.path, score })
   }
   scored.sort((x, y) => y.score - x.score || (x.path < y.path ? -1 : x.path > y.path ? 1 : 0))

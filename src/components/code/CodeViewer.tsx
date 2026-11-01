@@ -352,7 +352,9 @@ export function CodeViewer(props: CodeViewerProps) {
       tabIndex={0}
       onKeyDown={onKeyDown}
       className={cn(
-        'relative overflow-auto bg-surface font-mono text-[13px] leading-5 text-ink outline-none',
+        // outline-hidden (not outline-none): Windows High Contrast drops the ring, so it shows a real outline instead,
+        // drawn inside the box because the card around the code clips anything outside it.
+        'relative overflow-auto bg-surface font-mono text-[13px] leading-5 text-ink focus-visible:outline-hidden focus-visible:forced-colors:outline-offset-[-2px]',
         'focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset',
         className,
       )}

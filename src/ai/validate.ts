@@ -84,6 +84,57 @@ const CATEGORY_EMOJI: Record<ConceptCategory, string> = {
   idea: '💡',
 }
 
+const CATEGORY_SYNONYMS: Record<string, ConceptCategory> = {
+  information: 'data',
+  entity: 'data',
+  model: 'data',
+  record: 'data',
+  thing: 'data',
+  capability: 'feature',
+  function: 'feature',
+  functionality: 'feature',
+  action: 'feature',
+  flow: 'process',
+  workflow: 'process',
+  procedure: 'process',
+  pipeline: 'process',
+  lifecycle: 'process',
+  step: 'process',
+  role: 'actor',
+  user: 'actor',
+  person: 'actor',
+  agent: 'actor',
+  service: 'actor',
+  system: 'actor',
+  tool: 'technology',
+  tech: 'technology',
+  library: 'technology',
+  framework: 'technology',
+  dependency: 'technology',
+  platform: 'technology',
+  language: 'technology',
+  concept: 'idea',
+  pattern: 'idea',
+  principle: 'idea',
+  design: 'idea',
+  architecture: 'idea',
+}
+
+/** Map whatever category Claude wrote ("Technology", "tools", "design pattern" …) onto a known one; 'idea' otherwise. */
+export function normalizeCategory(raw: unknown): ConceptCategory {
+  const words = clean(raw)
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean)
+  const known = (w: string): ConceptCategory | undefined =>
+    Object.hasOwn(CATEGORY_EMOJI, w) ? (w as ConceptCategory) : Object.hasOwn(CATEGORY_SYNONYMS, w) ? CATEGORY_SYNONYMS[w] : undefined
+  for (const w of words) {
+    const hit = known(w) ?? (w.endsWith('s') ? known(w.slice(0, -1)) : undefined)
+    if (hit) return hit
+  }
+  return 'idea'
+}
+
 /** Keep a real emoji; replace empty strings, ":shortcodes:" or words with a fallback. */
 export function cleanEmoji(raw: unknown, fallback: string): string {
   const e = clean(raw)
@@ -118,11 +169,12 @@ export function validateConceptMap(raw: ConceptMapOutput, analysis: RepoAnalysis
       const p = resolve(f)
       if (p && !files.includes(p)) files.push(p)
     }
+    const category = normalizeCategory(c.category)
     concepts.push({
       id,
       name,
-      emoji: cleanEmoji(c.emoji, CATEGORY_EMOJI[c.category] ?? '💡'),
-      category: c.category in CATEGORY_EMOJI ? c.category : 'idea',
+      emoji: cleanEmoji(c.emoji, CATEGORY_EMOJI[category]),
+      category,
       summary: clean(c.summary),
       explanation: clean(c.explanation),
       analogy: clean(c.analogy),

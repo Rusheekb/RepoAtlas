@@ -3,7 +3,8 @@ import { ROOT_MODULE_ID } from '@/core/types'
 import { LAYER_INFO, ROLE_INFO } from '@/core/labels'
 import { formatCompact, formatNumber, formatPercent } from '@/core/format'
 import { basename } from '@/core/paths'
-import { zonesOf } from './structure/zones'
+import { isPeripheral, zonesOf } from './structure/zones'
+import { relianceOf, relianceText } from './graph'
 import { article, code, count, escapeMd, escapeMdKeepCode, firstSentence, humanize, identifierWords, listJoin, lowerFirst, pick, readmeIntro, sentence, truncateChars, wordCount } from './structure/text'
 
 const MAX_WORDS = 30
@@ -188,6 +189,15 @@ function mainSymbol(f: AnalyzedFile, kinds?: CodeSymbol['kind'][]): CodeSymbol |
   if (named) return named
   const rank: Partial<Record<CodeSymbol['kind'], number>> = { component: 0, class: 1, struct: 1, hook: 2, function: 3, interface: 4, type: 4, trait: 4, enum: 5 }
   return [...pool].sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9) || a.line - b.line)[0]
+}
+
+/** Names of error types ("NoAppException", "ParseSizeError"): never a good example of what a file does. */
+const ERROR_NAME = /(?:Error|Exception|Err|Warning)$/
+
+/** A function that looks like a terminal command: run_command, shell_command, cmd_init, main … */
+function commandSymbol(f: AnalyzedFile): CodeSymbol | null {
+  const fns = topSymbols(f).filter((s) => s.kind === 'function' && !s.name.startsWith('_') && !ERROR_NAME.test(s.name))
+  return fns.find((s) => /command|^cmd[A-Z_]|[a-z_]cmd$|^cli[A-Z_]?|^main$|^run[A-Z_]?$/i.test(s.name)) ?? null
 }
 
 function namesList(symbols: CodeSymbol[], max = 3): string {
@@ -515,8 +525,13 @@ function summarize(f: AnalyzedFile): string {
       const lang = localeName(f)
       return finish(`Translations: the app’s text in ${lang ?? 'another language'}.`)
     }
-    case 'cli':
-      return finish(`Handles commands typed into the terminal${main ? `, like ${code(main.name)}` : ''}${usedBy(f)}.`)
+    case 'cli': {
+      // Only a command-like function makes a good example ("like `run_command`"); an error class such as NoAppException doesn't.
+      const command = commandSymbol(f)
+      if (command) return finish(`Handles commands typed into the terminal, like ${code(command.name)}${usedBy(f)}.`)
+      const shown = main && !ERROR_NAME.test(main.name) ? main : null
+      return finish(`Handles commands typed into the terminal${shown ? `; it defines ${code(shown.name)}` : ''}${usedBy(f)}.`)
+    }
     case 'library':
       return finish(libraryCodeSummary(f, main, subject), [pulls])
     case 'other':
@@ -562,15 +577,53 @@ function libraryCodeSummary(f: AnalyzedFile, mainSymbol: CodeSymbol | null, subj
 
 type OverviewInput = Omit<RepoAnalysis, 'overview' | 'learningPath' | 'starterConcepts' | 'starterTours'>
 
+export interface OverviewOptions {
+  /**
+   * What to call the project when the repository's name says little ("cli" for HTTPie): usually the package name.
+   * Defaults to the repository's name.
+   */
+  name?: string
+}
+
+/** Folder-like repository names that say what the repo holds rather than what the project is called. */
+const GENERIC_REPO_NAMES = new Set([
+  'cli', 'core', 'app', 'api', 'server', 'client', 'web', 'lib', 'sdk', 'main', 'src', 'code', 'project', 'backend', 'frontend',
+  'website', 'site', 'docs', 'mobile', 'desktop', 'engine', 'tool', 'tools', 'plugin', 'extension', 'source', 'monorepo',
+])
+
+/**
+ * The name to use for the project in prose: the repository's name, or the package name it declares when the
+ * repository is called something generic ("httpie" for httpie/cli). Scoped npm names lose their scope.
+ */
+export function projectDisplayName(repo: string, declaredNames: readonly string[] = []): string {
+  const r = (repo ?? '').trim()
+  if (r && !GENERIC_REPO_NAMES.has(r.toLowerCase())) return r
+  const declared = declaredNames
+    .map((n) => (typeof n === 'string' ? n.trim().replace(/^@[^/]+\//, '') : ''))
+    .find((n) => n.length >= 2 && n.length <= 40 && /^[\w.-]+$/.test(n) && !GENERIC_REPO_NAMES.has(n.toLowerCase()))
+  return declared ?? r
+}
+
+/** Whether most meaningful words of a module's role already appear in its name or description ("examples — examples:"). */
+function roleIsRedundant(role: string, name: string, description: string): boolean {
+  const stem = (w: string) => w.toLowerCase().replace(/[’']s$/, '').replace(/(?:ies)$/, 'y').replace(/(?:es|s)$/, '')
+  const words = (t: string) => t.split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(stem)
+  const filler = new Set(['and', 'the', 'of', 'a', 'an', 'for', 'to', 'in', 'file', 'part', 'code'])
+  const roleWords = words(role).filter((w) => !filler.has(w))
+  if (roleWords.length === 0) return true
+  const seen = new Set([...words(name), ...words(description)])
+  return roleWords.filter((w) => seen.has(w)).length * 2 >= roleWords.length
+}
+
 /**
  * Heuristic plain-English overview of the whole project in Markdown (no AI). Sections:
  * "## What is this?", "## What it's built with", "## How it's organized", "## Where it starts", "## Good to know".
  * Uses projectKind, techStack (with descriptions), modules (top ~6 with roles), entry points, stats, README first paragraph.
  * Friendly, concrete, 200–400 words.
  */
-export function writeOverview(analysis: OverviewInput): string {
+export function writeOverview(analysis: OverviewInput, options: OverviewOptions = {}): string {
   const { meta, projectKind: kind, stats } = analysis
-  const name = escapeMd(meta.repo || meta.fullName || 'This project')
+  const name = escapeMd(options.name?.trim() || meta.repo || meta.fullName || 'This project')
   const out: string[] = []
 
   // What is this?
@@ -599,7 +652,14 @@ export function writeOverview(analysis: OverviewInput): string {
   if (techs.length > 0) {
     out.push(`The main tools it relies on:\n${techs.map((t) => `- **${escapeMd(t.name)}** — ${escapeMd(firstSentence(t.description || 'a tool the project uses'))}`).join('\n')}`)
   } else if (langs.length > 0) {
-    out.push('We didn’t spot any well-known frameworks — it’s mostly the authors’ own code.')
+    const small = corePackages(analysis)
+    if (small.length >= 3) {
+      out.push(
+        `It doesn’t build on one big, well-known framework. Instead it leans on many small ready-made packages written by others, such as ${listJoin(small.slice(0, 3).map(code))}.`,
+      )
+    } else {
+      out.push('We didn’t spot any well-known frameworks — it’s mostly the authors’ own code.')
+    }
   }
   if (tooling.length > 0) out.push(`Behind the scenes it also uses helper tools like ${listJoin(tooling.slice(0, 4).map((t) => escapeMd(t.name)))}.`)
   if (langs.length === 0 && techs.length === 0) out.push('We didn’t find program code we recognise — it may be mostly documents, settings or data.')
@@ -611,7 +671,14 @@ export function writeOverview(analysis: OverviewInput): string {
   if (top.length > 0) {
     out.push(
       `The project is split into ${count(analysis.modules.length, 'main part')}. ${top.length < analysis.modules.length ? 'The most important ones:' : 'Here they are:'}\n` +
-        top.map((m) => `- ${m.emoji} **${escapeMd(m.name)}** — ${escapeMd(lowerFirst(m.role))}: ${escapeMdKeepCode(lowerFirst(firstSentence(m.description)))}`).join('\n'),
+        top
+          .map((m) => {
+            const what = firstSentence(m.description)
+            // "examples — examples: …" and "core — core logic: the central rules …" say the same thing twice.
+            const role = roleIsRedundant(m.role, m.name, what) ? '' : `${escapeMd(lowerFirst(m.role))}: `
+            return `- ${m.emoji} **${escapeMd(m.name)}** — ${role}${escapeMdKeepCode(lowerFirst(what))}`
+          })
+          .join('\n'),
     )
     out.push('Open **How It Connects** to see which parts rely on which.')
   } else {
@@ -642,8 +709,9 @@ export function writeOverview(analysis: OverviewInput): string {
   )
   const hub = analysis.hubs[0]
   if (hub && analysis.files[hub]) {
-    const users = analysis.files[hub].importedBy.filter((p) => analysis.files[p]?.kind !== 'test').length
-    if (users > 0) facts.push(`The most relied-on file is ${code(hub)}, used by ${count(users, 'other file')}.`)
+    // The same count the learning path and the file cards show.
+    const reliance = relianceOf(analysis.files[hub], analysis.files)
+    if (reliance.total > 0) facts.push(`The most relied-on file is ${code(hub)}, used by ${relianceText(reliance)}.`)
   }
   if (stats.externalPackages > 0) facts.push(`It uses ${count(stats.externalPackages, 'outside package')} — ready-made code written by others.`)
   if (meta.license) facts.push(`It’s shared under the ${escapeMd(meta.license)} license.`)
@@ -652,4 +720,14 @@ export function writeOverview(analysis: OverviewInput): string {
   out.push(facts.map((f) => `- ${f}`).join('\n'))
 
   return out.join('\n\n')
+}
+
+/** Outside packages the project's own code imports (not its tests or examples), most used first. */
+function corePackages(analysis: Pick<OverviewInput, 'files'>): string[] {
+  const by = new Map<string, number>()
+  for (const f of Object.values(analysis.files)) {
+    if (f.kind === 'test' || f.layer === 'test' || isPeripheral(f.path)) continue
+    for (const p of f.externalImports) by.set(p, (by.get(p) ?? 0) + 1)
+  }
+  return [...by.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([p]) => p)
 }

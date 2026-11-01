@@ -1,3 +1,4 @@
+import { createStore, get as idbGet, keys as idbKeys } from 'idb-keyval'
 import type { LoadProgress } from '@/core/types'
 import { GitHubError } from './errors'
 import { fakeGitHub, type FakeRepoOptions } from './fakeGitHub'
@@ -5,10 +6,12 @@ import {
   MAX_CACHED_SNAPSHOTS,
   REF_CACHE_TTL_MS,
   clearSnapshotCache,
+  forgetPrivateData,
   listCachedSnapshots,
   loadRepoSnapshot,
   removeCachedSnapshot,
   snapshotCacheKey,
+  tokenFingerprint,
 } from './snapshot'
 
 const repoFiles: FakeRepoOptions['files'] = {
@@ -294,5 +297,113 @@ describe('snapshot cache', () => {
     fetchMock.mockClear()
     await loadRepoSnapshot({ owner: 'acme', repo: 'widgets' }, { depth: 'quick' })
     expect(fetchMock.mock.calls.length).toBeGreaterThan(0)
+  })
+})
+
+describe('branches whose names contain a slash', () => {
+  it('finds the branch at the start of a pasted /tree/ link', async () => {
+    const { fetchMock } = install({ branches: ['release/1.x'] })
+    const snap = await loadRepoSnapshot({ owner: 'acme', repo: 'widgets', ref: 'release/1.x/src/dir' }, { depth: 'quick' })
+    expect(snap.ref).toBe('release/1.x')
+    const commits = fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.includes('/commits/'))
+    expect(commits.map((u) => decodeURIComponent(u.slice(u.indexOf('/commits/') + 9)))).toEqual(['release/1.x/src/dir', 'release', 'release/1.x'])
+  })
+
+  it('opens a typed slash branch with a single lookup', async () => {
+    const { fetchMock } = install({ branches: ['feature/login'] })
+    const snap = await loadRepoSnapshot({ owner: 'acme', repo: 'widgets', ref: 'feature/login' }, { depth: 'quick' })
+    expect(snap.ref).toBe('feature/login')
+    expect(fetchMock.mock.calls.filter(([u]) => String(u).includes('/commits/'))).toHaveLength(1)
+  })
+
+  it('explains clearly when no beginning of the link is a branch', async () => {
+    install()
+    await expect(loadRepoSnapshot({ owner: 'acme', repo: 'widgets', ref: 'nope/x/y' }, { depth: 'quick' })).rejects.toMatchObject({
+      kind: 'not-found',
+      message: "We couldn't find a branch, tag or commit matching the start of “nope/x/y” in acme/widgets. Check the link, or open the project without choosing a branch.",
+    })
+  })
+})
+
+describe('private repositories', () => {
+  const store = createStore('repoatlas-snapshots', 'snapshots')
+  const storedRefs = async () => Object.values((await idbGet<Record<string, { meta: { fullName: string; isPrivate: boolean } }>>('refs', store)) ?? {})
+  const storedSnapshotKeys = async () => (await idbKeys(store)).filter((k) => String(k).startsWith('snap:'))
+
+  it('keeps them in memory only, and never serves them to a visitor without the token', async () => {
+    const { fetchMock } = install({ isPrivate: true })
+    const snap = await loadRepoSnapshot({ owner: 'acme', repo: 'widgets' }, { depth: 'standard', token: 'ghp_TOKEN' })
+    expect(snap.files['src/App.tsx']).toBeDefined()
+    // Nothing private reached IndexedDB.
+    expect(await listCachedSnapshots()).toEqual([])
+    expect(await storedSnapshotKeys()).toEqual([])
+    expect(await storedRefs()).toEqual([])
+
+    // Same token, same tab: served from memory without a single request.
+    fetchMock.mockClear()
+    const again = await loadRepoSnapshot({ owner: 'acme', repo: 'widgets' }, { depth: 'standard', token: 'ghp_TOKEN' })
+    expect(again).toEqual(snap)
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    // No token, or another token: GitHub is asked (and says no), the cache is not used.
+    await expect(loadRepoSnapshot({ owner: 'acme', repo: 'widgets' }, { depth: 'standard' })).rejects.toMatchObject({ kind: 'not-found' })
+    fetchMock.mockClear()
+    await loadRepoSnapshot({ owner: 'acme', repo: 'widgets' }, { depth: 'standard', token: 'ghp_OTHER' })
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.github.com/repos/acme/widgets')
+  })
+
+  it('stores them on disk only with persistPrivate, keyed to the token that opened them', async () => {
+    install({ isPrivate: true })
+    await loadRepoSnapshot({ owner: 'acme', repo: 'widgets' }, { depth: 'quick', token: 'ghp_TOKEN', persistPrivate: true })
+    const listed = await listCachedSnapshots()
+    expect(listed).toHaveLength(1)
+    expect(listed[0]).toMatchObject({ fullName: 'acme/widgets', isPrivate: true })
+    const refKeys = Object.keys((await idbGet<Record<string, unknown>>('refs', store)) ?? {})
+    expect(refKeys).toHaveLength(1)
+    expect(refKeys[0]).toMatch(/^acme\/widgets@#[0-9a-f]{16}$/)
+    expect(refKeys[0]).not.toContain('ghp_TOKEN')
+    await expect(loadRepoSnapshot({ owner: 'acme', repo: 'widgets' }, { depth: 'quick', persistPrivate: true })).rejects.toMatchObject({
+      kind: 'not-found',
+    })
+  })
+
+  it('forgetPrivateData removes private repositories from memory and disk but keeps public ones', async () => {
+    install({ repo: 'public-one' })
+    await loadRepoSnapshot({ owner: 'acme', repo: 'public-one' }, { depth: 'quick' })
+    install({ repo: 'secret', isPrivate: true })
+    await loadRepoSnapshot({ owner: 'acme', repo: 'secret' }, { depth: 'quick', token: 'ghp_TOKEN', persistPrivate: true })
+    install({ repo: 'secret-two', isPrivate: true })
+    await loadRepoSnapshot({ owner: 'acme', repo: 'secret-two' }, { depth: 'quick', token: 'ghp_TOKEN' })
+
+    const forgotten = await forgetPrivateData()
+    expect(forgotten.sort()).toEqual(['acme/secret', 'acme/secret-two'])
+    expect((await listCachedSnapshots()).map((c) => c.fullName)).toEqual(['acme/public-one'])
+    expect((await storedRefs()).map((e) => e.meta.fullName)).toEqual(['acme/public-one'])
+    expect(await storedSnapshotKeys()).toHaveLength(1)
+
+    // Both private projects must now be downloaded again, even with the right token.
+    const { fetchMock } = install({ repo: 'secret-two', isPrivate: true })
+    await loadRepoSnapshot({ owner: 'acme', repo: 'secret-two' }, { depth: 'quick', token: 'ghp_TOKEN' })
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/git/trees/'))).toBe(true)
+  })
+
+  it('moves private code saved on disk by an older version into memory', async () => {
+    install({ isPrivate: true })
+    await loadRepoSnapshot({ owner: 'acme', repo: 'widgets' }, { depth: 'quick', token: 'ghp_TOKEN', persistPrivate: true })
+    expect(await storedSnapshotKeys()).toHaveLength(1)
+    const { fetchMock } = install({ isPrivate: true })
+    const snap = await loadRepoSnapshot({ owner: 'acme', repo: 'widgets' }, { depth: 'quick', token: 'ghp_TOKEN' })
+    expect(snap.meta.isPrivate).toBe(true)
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/git/trees/'))).toBe(false)
+    expect(await storedSnapshotKeys()).toEqual([])
+  })
+
+  it('fingerprints tokens one way', async () => {
+    expect(await tokenFingerprint(undefined)).toBe('anon')
+    expect(await tokenFingerprint('  ')).toBe('anon')
+    const a = await tokenFingerprint('ghp_A')
+    expect(a).toMatch(/^[0-9a-f]{16}$/)
+    expect(await tokenFingerprint('ghp_A')).toBe(a)
+    expect(await tokenFingerprint('ghp_B')).not.toBe(a)
   })
 })

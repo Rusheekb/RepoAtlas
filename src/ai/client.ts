@@ -10,6 +10,7 @@ import type {
 import type { z } from 'zod'
 import { MODELS } from '@/core/labels'
 import type { ModelId } from '@/core/types'
+import { supportsRefusalFallbacks } from './models'
 import { AiError, type AiStatus, type AiUsage, type StreamCallbacks } from './types'
 
 export interface ClaudeRequest {
@@ -29,10 +30,7 @@ export const CUT_SHORT_NOTE = '\n\n_(Answer cut short — it got very long.)_'
 
 const FALLBACK_BETA = 'server-side-fallback-2026-07-01'
 
-/** Server-side refusal fallbacks exist for Opus 5.5 and Sonnet 5.5 only (never send them for Haiku 5.5). */
-export function supportsRefusalFallbacks(model: ModelId): boolean {
-  return model === 'claude-opus-5-5' || model === 'claude-sonnet-5-5'
-}
+export { supportsRefusalFallbacks }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Client
@@ -335,12 +333,22 @@ function errorText(err: unknown): string {
   return typeof err === 'string' ? err : ''
 }
 
-/** Error "type" from an Anthropic error body ({ type: 'error', error: { type: 'billing_error', … } }), if present. */
+/**
+ * Error "type" of an Anthropic error ('overloaded_error', 'billing_error' …): the SDK's own `type`, else read from the
+ * body ({ type: 'error', error: { type: … } }). Errors that arrive in the middle of a stream have no HTTP status, so
+ * this is the only way to tell what went wrong.
+ */
 function apiErrorType(err: InstanceType<typeof Anthropic.APIError>): string {
+  const own: unknown = (err as { type?: unknown }).type
+  if (typeof own === 'string' && own) return own
   const body = err.error as { error?: { type?: unknown }; type?: unknown } | undefined
   const t = body?.error?.type ?? body?.type
-  return typeof t === 'string' ? t : ''
+  return typeof t === 'string' && t !== 'error' ? t : ''
 }
+
+const BUSY_MESSAGE = 'Claude is very busy right now. Please try again in a minute.'
+const RATE_LIMIT_MESSAGE =
+  'You’ve reached Claude’s usage limit for the moment. Wait a minute and try again (your plan’s limits are at console.anthropic.com).'
 
 const BILLING_MESSAGE =
   'Your Anthropic account seems to be out of credit. Add credit at console.anthropic.com (Billing), then try again.'
@@ -373,14 +381,16 @@ export function toAiError(err: unknown, signal?: AbortSignal): AiError {
     return new AiError('invalid-key', 'That Claude model isn’t available to your account. Pick a different model in Settings.', detail)
   }
   if (err instanceof Anthropic.RateLimitError) {
-    return new AiError(
-      'rate-limited',
-      'You’ve reached Claude’s usage limit for the moment. Wait a minute and try again (your plan’s limits are at console.anthropic.com).',
-      detail,
-    )
+    return new AiError('rate-limited', RATE_LIMIT_MESSAGE, detail)
   }
   if (err instanceof Anthropic.InternalServerError || (err instanceof Anthropic.APIError && (err.status === 529 || (err.status ?? 0) >= 500))) {
-    return new AiError('overloaded', 'Claude is very busy right now. Please try again in a minute.', detail)
+    return new AiError('overloaded', BUSY_MESSAGE, detail)
+  }
+  // Errors sent in the middle of a stream (no HTTP status): only their type says what happened. Both are temporary.
+  if (err instanceof Anthropic.APIError && err.status === undefined) {
+    const type = apiErrorType(err)
+    if (type === 'overloaded_error' || type === 'api_error') return new AiError('overloaded', BUSY_MESSAGE, detail)
+    if (type === 'rate_limit_error') return new AiError('rate-limited', RATE_LIMIT_MESSAGE, detail)
   }
   if (err instanceof Anthropic.BadRequestError) {
     const msg = errorText(err)

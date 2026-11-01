@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalyzedFile, FileRole, ModuleInfo, RepoAnalysis } from '@/core/types'
 import { ROOT_MODULE_ID } from '@/core/types'
-import { summarizeFile, writeOverview } from './summaries'
+import { projectDisplayName, summarizeFile, writeOverview } from './summaries'
 import { makeFile, makeMeta } from './structure/testkit'
 import { wordCount } from './structure/text'
 
@@ -207,5 +207,88 @@ describe('writeOverview', () => {
     expect(md).not.toContain('<script>')
     expect(md).not.toContain('alert(1)')
     expect(md).not.toMatch(/(?<!\\)\]\((javascript|http)/)
+  })
+})
+
+describe('summarizeFile: command-line files', () => {
+  it('gives a command as the example, never an error class', () => {
+    const cli = makeFile('src/flask/cli.py', {
+      role: 'cli',
+      layer: 'api',
+      symbols: [sym('NoAppException', 'class'), sym('find_best_app'), sym('run_command'), sym('shell_command')],
+      importedBy: ['a', 'b'],
+    })
+    const s = summarizeFile(cli)
+    expect(s).toBe('Handles commands typed into the terminal, like `run_command`, used by 2 other files.')
+    expect(s).not.toContain('NoAppException')
+  })
+
+  it('names a non-command helper without calling it a command', () => {
+    const s = summarizeFile(makeFile('crates/cli/src/human.rs', { role: 'cli', symbols: [sym('ParseSizeError', 'struct'), sym('parse_human_readable_size')] }))
+    expect(s).not.toContain('ParseSizeError')
+    expect(s).not.toMatch(/like `/)
+    const err = summarizeFile(makeFile('crates/cli/src/pattern.rs', { role: 'cli', symbols: [sym('InvalidPatternError', 'struct')] }))
+    expect(err).toBe('Handles commands typed into the terminal.')
+  })
+})
+
+describe('writeOverview: plain, consistent wording', () => {
+  it('doesn’t repeat a part’s role when its name or description already says it', () => {
+    const mod = (id: string, role: string, description: string): ModuleInfo => ({
+      id, name: id, path: id, layer: 'logic', role, description, emoji: '⚙️', files: [], fileCount: 3, lines: 100, bytes: 1000, languages: [], keyFiles: [], layerBreakdown: {},
+    })
+    const md = writeOverview(
+      analysisFor({
+        modules: [
+          mod('examples', 'Examples', 'Sample projects and snippets showing how to use this project.'),
+          mod('flask', 'Core logic', 'Holds part of the project’s core logic, including `app.py`.'),
+          mod('.github', 'GitHub settings', 'GitHub-specific files: automation pipelines, issue templates and contribution rules.'),
+          mod('tests', 'Automated tests', 'Code that automatically checks the rest of the project still works.'),
+          mod('benchsuite', 'Command files', 'Holds part of the project’s data & storage.'),
+        ],
+      }),
+    )
+    expect(md).toContain('**examples** — sample projects')
+    expect(md).toContain('**flask** — holds part of the project’s core logic')
+    expect(md).toContain('**.github** — GitHub-specific files')
+    expect(md).toContain('**tests** — code that automatically checks')
+    expect(md).toContain('**benchsuite** — command files: holds part')
+    expect(md).not.toMatch(/examples\*\* — examples:|core logic: holds part of the project’s core logic/)
+  })
+
+  it('gives the same “used by” number as the file cards, noting the tests', () => {
+    const files: Record<string, AnalyzedFile> = {
+      'src/flask/globals.py': makeFile('src/flask/globals.py', { importedBy: ['src/flask/a.py', 'src/flask/b.py', 'tests/test_a.py'] }),
+      'src/flask/a.py': makeFile('src/flask/a.py'),
+      'src/flask/b.py': makeFile('src/flask/b.py'),
+      'tests/test_a.py': makeFile('tests/test_a.py', { kind: 'test', role: 'test', layer: 'test' }),
+    }
+    const md = writeOverview(analysisFor({ files, hubs: ['src/flask/globals.py'] }))
+    expect(md).toContain('The most relied-on file is `src/flask/globals.py`, used by 3 other files (1 of them is a test).')
+  })
+
+  it('uses the package name when the repository has a generic name (httpie/cli)', () => {
+    expect(projectDisplayName('cli', ['httpie'])).toBe('httpie')
+    expect(projectDisplayName('flask', ['Flask'])).toBe('flask')
+    expect(projectDisplayName('core', ['@acme/core', 'acme-core'])).toBe('acme-core')
+    expect(projectDisplayName('cli', [])).toBe('cli')
+    expect(writeOverview(analysisFor(), { name: 'httpie' })).toContain('**httpie** is a **web application**')
+  })
+
+  it('names the small packages a framework-free project builds on (Express)', () => {
+    const lib = (name: string, ext: string[]) => makeFile(`lib/${name}.js`, { externalImports: ext })
+    const files = Object.fromEntries(
+      [
+        lib('application', ['debug', 'finalhandler', 'router']),
+        lib('request', ['accepts', 'type-is', 'router']),
+        lib('response', ['send', 'router', 'vary']),
+        makeFile('examples/markdown/index.js', { externalImports: ['marked'] }),
+        makeFile('test/app.js', { kind: 'test', role: 'test', layer: 'test', externalImports: ['supertest'] }),
+      ].map((f) => [f.path, f]),
+    )
+    const md = writeOverview(analysisFor({ files, techStack: [], hubs: [] }))
+    expect(md).toContain('It doesn’t build on one big, well-known framework. Instead it leans on many small ready-made packages written by others, such as `router`,')
+    expect(md).not.toContain('marked')
+    expect(md).not.toContain('supertest')
   })
 })

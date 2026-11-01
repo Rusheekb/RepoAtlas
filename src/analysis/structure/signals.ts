@@ -3,7 +3,7 @@
  * tours. Every function is cheap (a handful of regex scans) and safe on any input.
  */
 import type { Family } from './family'
-import { stripComments } from '../strip'
+import { maskSource } from '../strip'
 
 /** JSX markup such as `</div>`, `<Button />` or `return (<div …`. */
 const JSX_RE = /<\/[A-Za-z][\w.:-]*\s*>|<[A-Z][\w.]*(?:\s[^<>]*?)?\/>|\breturn\s*\(\s*<[A-Za-z>]|=>\s*\(?\s*<[A-Za-z][\w.]*[\s>]/
@@ -29,7 +29,7 @@ const ORM_PATTERNS: RegExp[] = [
   /@Entity\b/, // JPA, TypeORM
   /@Table\s*\(/,
   /\bmongoose\.(?:Schema|model)\b|\bnew\s+Schema\s*\(/, // Mongoose
-  /^\s*model\s+[A-Z]\w*\s*\{/m, // Prisma
+  /^[ \t]*model[ \t]+[A-Z]\w*\s*\{/m, // Prisma
   /\b(?:ActiveRecord::Base|ApplicationRecord)\b/, // Rails
   /\bextends\s+Model\b/, // Laravel Eloquent, Sequelize
   /\bsequelize\.define\s*\(|\bDataTypes\.[A-Z]+\b/, // Sequelize
@@ -60,7 +60,7 @@ export function looksLikeTest(content: string, family: Family): boolean {
     case 'js':
       return /\b(?:describe|it|test)\s*\(\s*['"`]/.test(content) && /\bexpect\s*\(|\bassert\b|\bt\.(?:is|deepEqual|true)\s*\(/.test(content)
     case 'python':
-      return /^\s*def\s+test_\w+\s*\(/m.test(content) && /\b(?:pytest|unittest)\b/.test(content)
+      return /^[ \t]*(?:async[ \t]+)?def[ \t]+test_\w+[ \t]*\(/m.test(content) && /\b(?:pytest|unittest|django\.test)\b/.test(content)
     case 'go':
       return /^func\s+(?:Test|Benchmark)\w*\s*\(\s*\w+\s+\*testing\.[TB]\s*\)/m.test(content)
     case 'jvm':
@@ -68,7 +68,7 @@ export function looksLikeTest(content: string, family: Family): boolean {
     case 'csharp':
       return /\[(?:Fact|Test|TestMethod|Theory)\]/.test(content)
     case 'ruby':
-      return /^\s*(?:RSpec\.)?describe\b[\s\S]*\bit\s+['"]/m.test(content) || /<\s*(?:Minitest::Test|ActiveSupport::TestCase)\b/.test(content)
+      return (/^[ \t]*(?:RSpec\.)?describe\b/m.test(content) && /^[ \t]*it[ \t]+['"]/m.test(content)) || /<\s*(?:Minitest::Test|ActiveSupport::TestCase)\b/.test(content)
     case 'php':
       return /\bextends\s+(?:\\?PHPUnit\\Framework\\)?TestCase\b/.test(content)
     default:
@@ -97,6 +97,11 @@ export interface StartSignal {
   kind: StartKind
   /** 1-based line where the signal was found. */
   line: number
+  /**
+   * Only the first line ("#!/bin/sh") says it can be run: true of every shell script, build wrapper (mvnw) and
+   * installer, so it's a weak hint that should only count when nothing better is found.
+   */
+  weak?: boolean
 }
 
 /** A line that starts with a comment marker (or a Python doctest prompt) is not running code. */
@@ -109,12 +114,30 @@ function onCodeLine(core: RegExp): RegExp {
 
 const NOT_PYTHON: Family[] = ['js', 'go', 'rust', 'jvm', 'csharp', 'c', 'ruby', 'php', 'swift', 'dart', 'elixir', 'lua', 'r', 'shell', 'other']
 
-const START_RULES: { kind: StartKind; re: RegExp; families?: Family[] }[] = [
+/** Chat libraries a bot logs in with; `client.login(` alone is also how Django tests and web apps sign people in. */
+const CHAT_LIBRARY = /\b(?:discord(?:\.js)?|telegraf|telegram|aiogram|slack[-_/]?bolt|slack_sdk|matrix-(?:js-)?sdk|tmi\.js|mineflayer|whatsapp-web\.js|oceanic\.js|hikari|nextcord|disnake|pycord)\b/i
+
+interface StartRule {
+  kind: StartKind
+  re: RegExp
+  families?: Family[]
+  /** Match against the text with string contents kept (for rules that read a string's value). */
+  strings?: boolean
+  /** Also required somewhere in the file, strings kept (an import of a chat library …). */
+  requires?: RegExp
+  /** Also required somewhere in the code, after the match (cobra.Command … .Execute()). */
+  then?: RegExp
+}
+
+const START_RULES: StartRule[] = [
   { kind: 'desktop', re: onCodeLine(/\bnew\s+BrowserWindow\s*\(|\btauri::Builder\b|\bwails\.Run\s*\(/) },
+  // A bot logs in with its token: client.login(TOKEN) / client.login(process.env.…), or any login once a chat library is in use.
+  { kind: 'bot', re: onCodeLine(/\bclient\.login\s*\(\s*(?:TOKEN|token|BOT_TOKEN|DISCORD_TOKEN|process\.env|os\.|config\.|settings\.|env\.)/) },
+  { kind: 'bot', re: onCodeLine(/\bclient\.login\s*\(/), strings: true, requires: CHAT_LIBRARY },
   {
     kind: 'bot',
     re: onCodeLine(
-      /\bclient\.login\s*\(|\b(?:bot|client)\.run\s*\(\s*(?:TOKEN|token|os\.|config|settings|process\.env)|\bbot\.(?:launch|start_polling|infinity_polling|run_polling|polling)\s*\(|\bapplication\.run_polling\s*\(|\bnew\s+App\s*\(\s*\{[\s\S]{0,300}signingSecret/,
+      /\b(?:bot|client)\.run\s*\(\s*(?:TOKEN|token|os\.|config|settings|process\.env)|\bbot\.(?:launch|start_polling|infinity_polling|run_polling|polling)\s*\(|\bapplication\.run_polling\s*\(|\bnew\s+App\s*\(\s*\{[\s\S]{0,300}signingSecret/,
     ),
   },
   {
@@ -137,20 +160,25 @@ const START_RULES: { kind: StartKind; re: RegExp; families?: Family[] }[] = [
     re: /^(?: {0,4}|\t?)(?:[\w.]+\s*=\s*)?(?:app|application|socketio|uvicorn|waitress|web|server|httpd|demo)\.(?:run|run_app|serve|serve_forever|launch)\s*\(/m,
     families: ['python'],
   },
-  {
-    kind: 'cli',
-    re: onCodeLine(/\bcobra\.Command\b[\s\S]*\.Execute\s*\(|\bprogram\.parse(?:Async)?\s*\(|\byargs\b[\s\S]*\.argv\b|\.parse_args\s*\(|\bclap::Parser\b|\bfire\.Fire\s*\(/),
-  },
-  { kind: 'main', re: /^package\s+main\b[\s\S]*^func\s+main\s*\(\s*\)/m, families: ['go'] },
-  { kind: 'main', re: /^\s*(?:pub\s+)?(?:async\s+)?fn\s+main\s*\(/m, families: ['rust'] },
-  { kind: 'main', re: /^if\s+__name__\s*==\s*['"]__main__['"]\s*:/m, families: ['python'] },
+  // "A then B" checks run as two plain searches: a [\s\S]* gap after every mention would rescan the rest of the file each time.
+  { kind: 'cli', re: onCodeLine(/\bcobra\.Command\b/), then: /\.Execute\s*\(/ },
+  { kind: 'cli', re: onCodeLine(/\byargs\b/), then: /\.argv\b/ },
+  { kind: 'cli', re: onCodeLine(/\bprogram\.parse(?:Async)?\s*\(|\.parse_args\s*\(|\bclap::Parser\b|\bfire\.Fire\s*\(/) },
+  { kind: 'main', re: /^package[ \t]+main\b/m, then: /^func[ \t]+main[ \t]*\([ \t]*\)/m, families: ['go'] },
+  { kind: 'main', re: /^[ \t]*(?:pub[ \t]+)?(?:async[ \t]+)?fn[ \t]+main[ \t]*\(/m, families: ['rust'] },
+  { kind: 'main', re: /^if[ \t]+__name__[ \t]*==[ \t]*['"]__main__['"][ \t]*:/m, families: ['python'], strings: true },
   { kind: 'main', re: onCodeLine(/\bstatic\s+(?:async\s+)?(?:void|int|Task(?:<int>)?)\s+Main\s*\(/), families: ['csharp'] },
-  { kind: 'main', re: onCodeLine(/\bpublic\s+static\s+void\s+main\s*\(|^\s*(?:suspend\s+)?fun\s+main\s*\(|@SpringBootApplication\b/), families: ['jvm'] },
-  { kind: 'main', re: /^\s*(?:int|void)\s+main\s*\(/m, families: ['c'] },
-  { kind: 'main', re: /^\s*@main\b/m, families: ['swift'] },
-  { kind: 'main', re: /^\s*(?:Future<void>|void)\s+main\s*\(/m, families: ['dart'] },
+  { kind: 'main', re: onCodeLine(/\bpublic\s+static\s+void\s+main\s*\(|^[ \t]*(?:suspend[ \t]+)?fun[ \t]+main[ \t]*\(|@SpringBootApplication\b/), families: ['jvm'] },
+  { kind: 'main', re: /^[ \t]*(?:int|void)[ \t]+main[ \t]*\(/m, families: ['c'] },
+  { kind: 'main', re: /^[ \t]*@main\b/m, families: ['swift'] },
+  { kind: 'main', re: /^[ \t]*(?:Future<void>|void)[ \t]+main[ \t]*\(/m, families: ['dart'] },
   { kind: 'main', re: onCodeLine(/\buse\s+Application\b/), families: ['elixir'] },
 ]
+
+/** Lines longer than this are minified bundles or data: no start-up call hides in them, and regexes get slow. */
+const MAX_SCAN_LINE = 5000
+/** "#!/usr/bin/env node", "#!/bin/sh" … on the first line. */
+const SHEBANG = /^#![^\n]{0,200}?\b(?:node|python3?|ruby|bash|sh|zsh|deno|bun|perl|php)\b/
 
 /** Line number (1-based) of a character offset. */
 export function lineOfOffset(content: string, offset: number): number {
@@ -165,19 +193,65 @@ export function lineOfOffset(content: string, offset: number): number {
  */
 export function detectStart(content: string, family: Family): StartSignal | null {
   if (!content) return null
+  const scan = blankLongLines(content)
+  return startIn(scan, scan, family) ?? shebangStart(content)
+}
+
+/** Blank out over-long lines (keeping every offset and line break where it was). */
+function blankLongLines(text: string): string {
+  if (text.length <= MAX_SCAN_LINE) return text
+  let long = false
+  for (let pos = 0; pos < text.length; ) {
+    const nl = text.indexOf('\n', pos)
+    const end = nl === -1 ? text.length : nl
+    if (end - pos > MAX_SCAN_LINE) {
+      long = true
+      break
+    }
+    pos = end + 1
+  }
+  if (!long) return text
+  const parts: string[] = []
+  for (let pos = 0; pos <= text.length; ) {
+    const nl = text.indexOf('\n', pos)
+    const end = nl === -1 ? text.length : nl
+    parts.push(end - pos > MAX_SCAN_LINE ? ' '.repeat(end - pos) : text.slice(pos, end))
+    if (nl === -1) break
+    pos = nl + 1
+  }
+  return parts.join('\n')
+}
+
+/**
+ * Run the start rules over `code` (comments and string contents blanked) — or over `text` (comments blanked, strings
+ * kept) for the few rules that need a string's value. Both views have identical offsets.
+ */
+function startIn(code: string, text: string, family: Family): StartSignal | null {
   for (const rule of START_RULES) {
     if (rule.families && !rule.families.includes(family)) continue
-    const m = rule.re.exec(content)
+    if (rule.requires && !rule.requires.test(text)) continue
+    const target = rule.strings ? text : code
+    const m = rule.re.exec(target)
+    let end = m ? m.index + m[0].length - 1 : -1
+    if (m && rule.then) {
+      const after = new RegExp(rule.then.source, `${rule.then.flags.replace('g', '')}g`)
+      after.lastIndex = m.index + m[0].length
+      const t = after.exec(target)
+      if (!t) continue
+      end = t.index + t[0].length - 1
+    }
     if (m) {
       // For multi-line patterns, point at the last line of the match (the line that actually starts things).
-      const end = m.index + m[0].length - 1
-      const startLine = lineOfOffset(content, m.index)
-      const endLine = lineOfOffset(content, end)
+      const startLine = lineOfOffset(target, m.index)
+      const endLine = lineOfOffset(target, end)
       return { kind: rule.kind, line: rule.kind === 'main' && family === 'go' ? endLine : startLine }
     }
   }
-  if (/^#!.*\b(?:node|python3?|ruby|bash|sh|zsh|deno|bun|perl|php)\b/.test(content)) return { kind: 'cli', line: 1 }
   return null
+}
+
+function shebangStart(content: string): StartSignal | null {
+  return SHEBANG.test(content) ? { kind: 'cli', line: 1, weak: true } : null
 }
 
 /** Results of detectStartIn, keyed by file content then by language (the same file is asked about several times). */
@@ -190,8 +264,9 @@ export function clearSignalCache(): void {
 }
 
 /**
- * Like detectStart, but ignores code that only appears inside comments (Go package docs, JSDoc examples …).
- * Line numbers still refer to the original content. Results are cached per content.
+ * Like detectStart, but ignores code that only appears inside comments (Go package docs, JSDoc examples …) or inside
+ * string literals (a test fixture holding 'app.listen(3000)' as text). Line numbers still refer to the original
+ * content. Results are cached per content.
  */
 export function detectStartIn(content: string, family: Family, language: string | null): StartSignal | null {
   if (!content) return null
@@ -199,15 +274,19 @@ export function detectStartIn(content: string, family: Family, language: string 
   const hit = startCache.get(content)?.get(key)
   if (hit !== undefined) return hit
   let code = content
+  let text = content
   if (language) {
     try {
-      const stripped = stripComments(content, language)
-      if (typeof stripped === 'string' && stripped.length > 0) code = stripped
+      const masked = maskSource(content, language)
+      if (masked.code.length === content.length && masked.text.length === content.length) {
+        code = masked.code
+        text = masked.text
+      }
     } catch {
       // Fall back to the raw text; the line-level comment guard still applies.
     }
   }
-  const result = detectStart(code, family)
+  const result = startIn(blankLongLines(code), blankLongLines(text), family) ?? shebangStart(content)
   if (startCache.size >= START_CACHE_LIMIT) startCache.clear()
   let byLang = startCache.get(content)
   if (!byLang) {

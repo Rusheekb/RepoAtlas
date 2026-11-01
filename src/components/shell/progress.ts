@@ -43,15 +43,24 @@ export interface LearningProgress {
   percent: number
 }
 
+/** Steps inside a tour ("tour:startup:step:3"): the tour itself ("tour:startup") is the one item that counts. */
+const TOUR_STEP_KEY = /^tour:.+:step:\d+$/
+
+/** True for progress keys that count as one thing explored (see PROGRESS_PREFIXES). Exported for tests. */
+export function countsTowardsProgress(key: string): boolean {
+  return PROGRESS_PREFIXES.some((p) => key.startsWith(p)) && !TOUR_STEP_KEY.test(key)
+}
+
 /**
  * Progress = explored items ÷ (base set ∪ explored items). Extra explorations (another file, an AI key idea) count too,
- * and the meter can never pass 100%.
+ * and the meter can never pass 100%. A whole tour counts once, when it's finished, so walking through its steps doesn't
+ * keep moving the goal.
  */
 export function computeLearningProgress(baseKeys: readonly string[], seen: Record<string, number> | undefined): LearningProgress {
   const universe = new Set(baseKeys)
   let seenCount = 0
   for (const key of Object.keys(seen ?? {})) {
-    if (!PROGRESS_PREFIXES.some((p) => key.startsWith(p))) continue
+    if (!countsTowardsProgress(key)) continue
     universe.add(key)
     seenCount++
   }

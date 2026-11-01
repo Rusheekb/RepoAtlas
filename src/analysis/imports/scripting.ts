@@ -1,9 +1,9 @@
-import { groupText, matchAll, splitTopLevel, type ImportSink, type Source } from './util'
+import { groupText, matchAll, splitTopLevel, untilTerminator, type ImportSink, type Source } from './util'
 
 // ─── Ruby ────────────────────────────────────────────────────────────────────
 
-const RUBY_REQUIRE = /(?<![\w.:])(require_relative|require|load|autoload)\b[ \t]*\(?[ \t]*(?::\w+\s*,\s*)?(['"])( *)\2/dg
-const RUBY_FILE_CALL = /(?<![\w.:])require\b[ \t]*\(?[ \t]*File\.(expand_path|join)\(/dg
+const RUBY_REQUIRE = /(?<![\w.:])(require_relative|require|load|autoload)\b[ \t]*(?:\([ \t]*)?(?::\w+\s*,\s*)?(['"])( *)\2/dg
+const RUBY_FILE_CALL = /(?<![\w.:])require\b[ \t]*(?:\([ \t]*)?File\.(expand_path|join)\(/dg
 const RUBY_ANCHOR = /^(?:__dir__|__FILE__|File\.dirname\(\s*__FILE__\s*\)|File\.dirname\(\s*__dir__\s*\))$/
 
 /** Resolve `File.join(__dir__, 'a', 'b')` / `File.expand_path('../x', __FILE__)` arguments to a relative path. */
@@ -50,9 +50,10 @@ export function extractRuby(src: Source, sink: ImportSink): void {
 
 // ─── PHP ─────────────────────────────────────────────────────────────────────
 
-const PHP_USE = /^[ \t]*use\s+(function\s+|const\s+)?([^;]+);/dgm
+/** `use …;` at the start of a line, read up to its ";" (see untilTerminator). */
+const PHP_USE_HEAD = /^[ \t]*use\s/gm
 const PHP_INCLUDE =
-  /(?<![\w$>])(require_once|include_once|require|include)\b\s*\(?\s*((?:__DIR__|dirname\(\s*__FILE__\s*\))\s*\.\s*)?(['"])( *)\3/dg
+  /(?<![\w$>])(require_once|include_once|require|include)\b\s*(?:\(\s*)?((?:__DIR__|dirname\(\s*__FILE__\s*\))\s*\.\s*)?(['"])( *)\3/dg
 
 /** Expand PHP use clauses: "A\B\{C, D as E}" / "A\B, C\D as E" → ["A\B\C", "A\B\D"] / ["A\B", "C\D"]. */
 export function expandPhpUse(clause: string): string[] {
@@ -63,13 +64,13 @@ export function expandPhpUse(clause: string): string[] {
     const prefix = c.slice(0, brace).trim().replace(/\\$/, '')
     const inner = c.slice(brace + 1, c.lastIndexOf('}') === -1 ? undefined : c.lastIndexOf('}'))
     for (const part of inner.split(',')) {
-      const name = part.trim().replace(/^(?:function|const)\s+/, '').split(/\s+as\s+/i)[0]?.trim()
+      const name = part.trim().replace(/^(?:function|const)\s+/, '').split(/(?<!\s)\s+as\s+/i)[0]?.trim()
       if (name) out.push(`${prefix}\\${name}`.replace(/^\\/, ''))
     }
     return out
   }
   for (const part of splitTopLevel(c)) {
-    const name = part.trim().split(/\s+as\s+/i)[0]?.trim().replace(/^\\/, '')
+    const name = part.trim().split(/(?<!\s)\s+as\s+/i)[0]?.trim().replace(/^\\/, '')
     if (name) out.push(name)
   }
   return out
@@ -78,15 +79,17 @@ export function expandPhpUse(clause: string): string[] {
 /** PHP: namespaced `use` (groups, comma lists, function/const), require/include (incl. __DIR__ . '/x.php'). */
 export function extractPhp(src: Source, sink: ImportSink): void {
   const { code, text } = src
-  for (const m of matchAll(PHP_USE, code)) {
-    const clause = m[2]
+  for (const { head, body } of untilTerminator(code, PHP_USE_HEAD, ';')) {
+    const prefixed = /^\s*(function|const)\s+(?=\S)/.exec(body)
+    const clause = prefixed ? body.slice(prefixed[0].length) : body
+    if (!clause.trim()) continue
     // Trait conflict blocks ("use A, B { … }") and closures are not namespace imports.
     if (/(^|[^\\])\{/.test(clause.replace(/\\\{/g, '')) || clause.includes('(') || clause.includes('$')) continue
     for (const name of expandPhpUse(clause)) {
       if (!name.includes('\\')) continue
       if (!/^[A-Za-z_\\][\w\\]*$/.test(name)) continue
       const segs = name.split('\\')
-      sink.add(name, m.index, m[1] ? m[1].trim() : 'use', [segs[segs.length - 1]])
+      sink.add(name, head.index, prefixed ? prefixed[1] : 'use', [segs[segs.length - 1]])
     }
   }
   for (const m of matchAll(PHP_INCLUDE, code)) {
@@ -119,7 +122,7 @@ export function extractDart(src: Source, sink: ImportSink): void {
 
 // ─── Elixir ──────────────────────────────────────────────────────────────────
 
-const ELIXIR_DIRECTIVE = /^[ \t]*(alias|import|use|require)\s+([A-Z][\w]*(?:\.[A-Z][\w]*)*)(\.\{([^}]*)\})?/dgm
+const ELIXIR_DIRECTIVE = /^[ \t]*(alias|import|use|require)\s+([A-Z][\w]*(?:\.[A-Z][\w]*)*)(\.\{([^}]{0,2000})\})?/dgm
 
 /** Elixir: alias / import / use / require of modules, including `alias App.{A, B}`. */
 export function extractElixir(src: Source, sink: ImportSink): void {
@@ -135,7 +138,7 @@ export function extractElixir(src: Source, sink: ImportSink): void {
 
 // ─── Lua ─────────────────────────────────────────────────────────────────────
 
-const LUA_REQUIRE = /(?<![\w.:])(require|dofile|loadfile)\s*\(?\s*(['"])( *)\2/dg
+const LUA_REQUIRE = /(?<![\w.:])(require|dofile|loadfile)\s*(?:\(\s*)?(['"])( *)\2/dg
 
 /** Lua: require 'a.b', require("a.b"), dofile / loadfile. */
 export function extractLua(src: Source, sink: ImportSink): void {
@@ -168,9 +171,25 @@ export function extractR(src: Source, sink: ImportSink): void {
 
 const SHELL_SOURCE = /^[ \t]*(?:source|\.)[ \t]+([^\n;&|]+)/dgm
 
+/**
+ * The first word of a shell argument list: up to the first blank outside quotes ("my dir/x.sh" stays whole).
+ * A single pass; a regex lookahead that re-reads the rest of the line from every blank is quadratic on long lines.
+ */
+function firstShellWord(s: string): string {
+  let quotes = 0
+  for (let i = 0; i < s.length; i++) if (s[i] === '"' || s[i] === "'") quotes++
+  let seen = 0
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (c === '"' || c === "'") seen++
+    else if (/\s/.test(c) && (quotes - seen) % 2 === 0) return s.slice(0, i)
+  }
+  return s
+}
+
 /** Normalize a sourced path: strip quotes and replace a leading "script folder" variable with "./". */
 export function normalizeShellPath(raw: string): string | null {
-  let p = raw.trim().split(/\s+(?=[^"']*(?:["'][^"']*["'][^"']*)*$)/)[0] ?? ''
+  let p = firstShellWord(raw.trim())
   p = p.replace(/["']/g, '')
   p = p.replace(/^\$\(\s*cd\s+[^)]*\)\s*(?:&&\s*pwd\s*\))?/, '.')
   p = p.replace(/^\$\(\s*dirname\s+[^)]*\)/, '.')

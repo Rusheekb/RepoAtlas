@@ -1,7 +1,7 @@
 import type { BetaMessageParam, BetaTextBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { extname } from '@/core/paths'
-import type { ChatMessage, ConceptMap, Quiz, Tour } from '@/core/types'
-import { generateStructured, streamText, type ClaudeRequest } from './client'
+import type { ChatMessage, ConceptMap, ContextSize, Quiz, Tour } from '@/core/types'
+import type { ClaudeRequest } from './client'
 import { getRepoContext } from './context'
 import {
   SYSTEM_INSTRUCTIONS,
@@ -21,9 +21,15 @@ import {
   type PromptFile,
 } from './prompts'
 import { pickRelevantFiles } from './relevance'
-import { ConceptMapSchema, QuizSchema, ToursSchema } from './schemas'
 import { AiError, type AiContext, type ExplainTask, type PromptTask, type StreamCallbacks } from './types'
 import { makePathResolver, validateConceptMap, validateQuiz, validateTours } from './validate'
+
+/**
+ * The Anthropic SDK and zod are only downloaded when Claude is actually called (they are large, and most readers
+ * never add a key), so the client and the schemas are imported lazily here instead of at the top.
+ */
+const loadClient = () => import('./client')
+const loadSchemas = () => import('./schemas')
 
 /** Everything a prompt needs, without the API key / model (so copy-paste prompts work without a key). */
 export type PromptInput = Omit<AiContext, 'apiKey' | 'model'>
@@ -36,12 +42,16 @@ export const CHAT_MAX_FILES = 6
 /**
  * The two system blocks shared by EVERY task and chat turn for a repo: the fixed instructions, then the repository
  * context with a cache breakpoint. Both are byte-stable, so the prompt cache is reused across tasks.
+ *
+ * The breakpoint uses the 1-hour cache: people read an overview, a tour or a concept map for several minutes before
+ * their next question, so a 5-minute entry would usually have expired and every action would pay to write the whole
+ * context again. A 1-hour write costs 2× the input price once; each later read costs a small fraction of it.
  */
 export function systemBlocks(input: Pick<PromptInput, 'analysis' | 'snapshot' | 'contextSize'>): BetaTextBlockParam[] {
   const repo = getRepoContext(input.analysis, input.snapshot, input.contextSize)
   return [
     { type: 'text', text: SYSTEM_INSTRUCTIONS },
-    { type: 'text', text: repo.text, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: repo.text, cache_control: { type: 'ephemeral', ttl: '1h' } },
   ]
 }
 
@@ -117,7 +127,7 @@ function request(ctx: AiContext, messages: BetaMessageParam[], effort: ClaudeReq
 export async function runExplainTask(ctx: AiContext, task: ExplainTask, cb?: StreamCallbacks): Promise<string> {
   if (!ctx.apiKey.trim()) throw new AiError('no-key', 'Add your Claude API key in Settings to get in-depth explanations.')
   cb?.onStatus?.('connecting')
-  const content = await buildExplainMessage(ctx, task)
+  const [content, { streamText }] = await Promise.all([buildExplainMessage(ctx, task), loadClient()])
   throwIfAborted(cb?.signal)
   const { text } = await streamText(request(ctx, [{ role: 'user', content }], explainEffort(task)), cb)
   return text
@@ -128,6 +138,7 @@ const NOTHING_USABLE = 'Claude’s answer didn’t contain anything RepoAtlas co
 /** Generate the AI concept map (8–18 concepts, relations reference concept ids, files are real repo paths). source: 'ai'. */
 export async function generateConceptMap(ctx: AiContext, cb?: StreamCallbacks): Promise<ConceptMap> {
   const content = buildConceptsPrompt(promptData(ctx), 'json')
+  const [{ generateStructured }, { ConceptMapSchema }] = await Promise.all([loadClient(), loadSchemas()])
   const { data } = await generateStructured(request(ctx, [{ role: 'user', content }], 'high'), ConceptMapSchema, cb)
   const map = validateConceptMap(data, ctx.analysis, ctx.snapshot)
   if (!map.concepts.length) throw new AiError('bad-output', NOTHING_USABLE)
@@ -141,6 +152,7 @@ export async function generateConceptMap(ctx: AiContext, cb?: StreamCallbacks): 
 export async function generateTours(ctx: AiContext, opts?: { question?: string; takenIds?: Set<string> }, cb?: StreamCallbacks): Promise<Tour[]> {
   const question = opts?.question?.trim() || undefined
   const content = buildToursPrompt(promptData(ctx), 'json', question)
+  const [{ generateStructured }, { ToursSchema }] = await Promise.all([loadClient(), loadSchemas()])
   const { data } = await generateStructured(request(ctx, [{ role: 'user', content }], 'high'), ToursSchema, cb)
 
   // Load the files the steps point at, so snippets can be checked against the real text.
@@ -168,6 +180,7 @@ export async function generateTours(ctx: AiContext, opts?: { question?: string; 
 /** Generate a 6–8 question multiple-choice quiz about how this project works. */
 export async function generateQuiz(ctx: AiContext, cb?: StreamCallbacks): Promise<Quiz> {
   const content = buildQuizPrompt(promptData(ctx), 'json')
+  const [{ generateStructured }, { QuizSchema }] = await Promise.all([loadClient(), loadSchemas()])
   const { data } = await generateStructured(request(ctx, [{ role: 'user', content }], 'high'), QuizSchema, cb)
   const quiz = validateQuiz(data)
   if (!quiz.questions.length) throw new AiError('bad-output', NOTHING_USABLE)
@@ -193,14 +206,48 @@ export function historyToMessages(history: ChatMessage[], limit = CHAT_HISTORY_L
   return max === 0 ? [] : pairs.slice(-max)
 }
 
-function chatFileBudget(input: PromptInput): number {
-  return input.contextSize === 'small' ? 6000 : input.contextSize === 'large' ? 20_000 : 12_000
+function chatFileBudget(size: ContextSize): number {
+  return size === 'small' ? 6000 : size === 'large' ? 20_000 : 12_000
+}
+
+/** Which files to attach to a chat question, given the repository context Claude already has. */
+export interface ChatFilePlan {
+  /** Files to send with the question (`fromLine` set when the context already shows the lines before it). */
+  files: PromptFile[]
+  /** Relevant files the context already contains in full: named, not sent again. */
+  alreadyShown: string[]
+}
+
+/**
+ * Pick the files to send with a chat question. Files the shared context already shows in full are not sent again
+ * (Claude has them, cached); for files it shows only the start of, just the rest is sent. The room this saves goes to
+ * the next most relevant files.
+ */
+export async function planChatFiles(
+  input: PromptInput,
+  question: string,
+  opts: { contextSize: ContextSize; maxFiles: number },
+): Promise<ChatFilePlan> {
+  const { coverage } = getRepoContext(input.analysis, input.snapshot, opts.contextSize)
+  const candidates = pickRelevantFiles(input.analysis, question, opts.maxFiles * 3)
+  const picked: { path: string; fromLine?: number }[] = []
+  const alreadyShown: string[] = []
+  for (const path of candidates) {
+    if (picked.length >= opts.maxFiles) break
+    const cov = Object.hasOwn(coverage, path) ? coverage[path] : undefined
+    if (cov && cov.shownLines >= cov.totalLines) {
+      alreadyShown.push(path)
+      continue
+    }
+    picked.push(cov ? { path, fromLine: cov.shownLines + 1 } : { path })
+  }
+  const files = await Promise.all(picked.map(async (f): Promise<PromptFile> => ({ ...f, content: await readFile(input, f.path) })))
+  return { files, alreadyShown }
 }
 
 async function chatTurn(input: PromptInput, question: string): Promise<string> {
-  const paths = pickRelevantFiles(input.analysis, question, CHAT_MAX_FILES)
-  const files: PromptFile[] = await Promise.all(paths.map(async (path) => ({ path, content: await readFile(input, path) })))
-  return buildChatPrompt(promptData(input), question, files, chatFileBudget(input))
+  const plan = await planChatFiles(input, question, { contextSize: input.contextSize, maxFiles: CHAT_MAX_FILES })
+  return buildChatPrompt(promptData(input), question, plan.files, chatFileBudget(input.contextSize), plan.alreadyShown)
 }
 
 /** Answer a question about the repo, given prior chat history. Pulls in files mentioned/relevant to the question. */
@@ -208,18 +255,23 @@ export async function askQuestion(ctx: AiContext, history: ChatMessage[], questi
   if (!ctx.apiKey.trim()) throw new AiError('no-key', 'Add your Claude API key in Settings to chat about this project.')
   if (!question.trim()) throw new AiError('unknown', 'Type a question first.')
   cb?.onStatus?.('connecting')
-  const content = await chatTurn(ctx, question)
+  const [content, { streamText }] = await Promise.all([chatTurn(ctx, question), loadClient()])
   throwIfAborted(cb?.signal)
   const messages: BetaMessageParam[] = [...historyToMessages(history), { role: 'user', content }]
   const { text } = await streamText(request(ctx, messages, 'medium'), cb)
   return text
 }
 
+/** The context size used for copy-paste prompts (small enough to paste into a chat message). */
+export const COPY_PROMPT_CONTEXT: ContextSize = 'small'
+
 /**
  * Build a complete, self-contained prompt (instructions + repo context + task) that a user without an API key can
- * paste into claude.ai. Uses a smaller context so it fits in a chat message.
+ * paste into claude.ai. Uses a smaller context so it fits in a chat message — and every "is this already in the
+ * context?" decision is made against that smaller context, not the one in Settings.
  */
-export async function buildCopyPrompt(ctx: Omit<AiContext, 'apiKey' | 'model'>, task: PromptTask): Promise<string> {
+export async function buildCopyPrompt(input: Omit<AiContext, 'apiKey' | 'model'>, task: PromptTask): Promise<string> {
+  const ctx: PromptInput = { ...input, contextSize: COPY_PROMPT_CONTEXT }
   const d = promptData(ctx)
   let body: string
   switch (task.kind) {
@@ -233,15 +285,14 @@ export async function buildCopyPrompt(ctx: Omit<AiContext, 'apiKey' | 'model'>, 
       body = buildQuizPrompt(d, 'markdown')
       break
     case 'chat': {
-      const paths = pickRelevantFiles(ctx.analysis, task.question, 3)
-      const files: PromptFile[] = await Promise.all(paths.map(async (path) => ({ path, content: await readFile(ctx, path) })))
-      body = buildChatPrompt(d, task.question, files, 6000)
+      const plan = await planChatFiles(ctx, task.question, { contextSize: COPY_PROMPT_CONTEXT, maxFiles: 3 })
+      body = buildChatPrompt(d, task.question, plan.files, chatFileBudget(COPY_PROMPT_CONTEXT), plan.alreadyShown)
       break
     }
     default:
       body = await buildExplainMessage(ctx, task)
   }
-  const repo = getRepoContext(ctx.analysis, ctx.snapshot, 'small')
+  const repo = getRepoContext(ctx.analysis, ctx.snapshot, COPY_PROMPT_CONTEXT)
   return [
     `# Help me understand the GitHub project ${ctx.analysis.meta.fullName}`,
     'I’m using RepoAtlas, a tool that explains code to people without a programming background. Please follow the guide instructions below, read the project material, then answer my request at the end.',

@@ -63,6 +63,74 @@ describe('skipReasonFor', () => {
   })
 })
 
+describe('folders that are only sometimes build output (build, out, target, obj, coverage)', () => {
+  const t = tree(
+    // pypa/build: the project's own package is called "build".
+    'pyproject.toml',
+    'src/build/__init__.py',
+    'src/build/_builder.py',
+    'build/lib/build/__init__.py',
+    // Go and Java packages that happen to use these names.
+    'go.mod',
+    'internal/build/build.go',
+    'src/main/java/org/acme/aop/target/Advice.java',
+    'src/coverage/report.py',
+    // A top-level folder that is a real Python package.
+    'coverage/__init__.py',
+    'coverage/control.py',
+    // Real output, next to the settings file of the tool that writes it.
+    'crates/app/Cargo.toml',
+    'crates/app/target/debug/app.d',
+    'services/api/pom.xml',
+    'services/api/target/classes/App.class.txt',
+    'web/package.json',
+    'web/build/static/main.js',
+    'web/coverage/lcov.info',
+    'android/app/build.gradle',
+    'android/app/build/intermediates/R.txt',
+    'src/MyApp/MyApp.csproj',
+    'src/MyApp/obj/project.assets.json',
+    'out/main.js',
+  )
+  const result = selectFilesToFetch(t, 'deep')
+
+  it('downloads real code in folders with those names', () => {
+    for (const p of [
+      'src/build/__init__.py',
+      'src/build/_builder.py',
+      'internal/build/build.go',
+      'src/main/java/org/acme/aop/target/Advice.java',
+      'src/coverage/report.py',
+      'coverage/__init__.py',
+      'coverage/control.py',
+    ]) {
+      expect(reasonOf(result, p), p).toBe('fetch')
+    }
+  })
+
+  it('still skips them when they are output: at the top level, or next to the tool’s settings file', () => {
+    for (const p of [
+      'build/lib/build/__init__.py',
+      'crates/app/target/debug/app.d',
+      'services/api/target/classes/App.class.txt',
+      'web/build/static/main.js',
+      'web/coverage/lcov.info',
+      'android/app/build/intermediates/R.txt',
+      'src/MyApp/obj/project.assets.json',
+      'out/main.js',
+    ]) {
+      expect(reasonOf(result, p), p).toBe('generated')
+    }
+  })
+
+  it('without the rest of the tree, only treats them as output at the top level', () => {
+    expect(skipReasonFor(entry('build/x.js'))).toBe('generated')
+    expect(skipReasonFor(entry('src/build/x.py'))).toBeNull()
+    expect(skipReasonFor(entry('target/release/x.d'))).toBe('generated')
+    expect(skipReasonFor(entry('pkg/target/x.java'))).toBeNull()
+  })
+})
+
 describe('selectFilesToFetch priorities', () => {
   const repo = tree(
     'tests/test_app.py',

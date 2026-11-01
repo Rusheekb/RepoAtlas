@@ -1,5 +1,5 @@
 import { forwardRef } from 'react'
-import { IconButton as KitIconButton, type ButtonProps } from '@/components/ui'
+import { IconButton as KitIconButton, type ButtonProps } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 
 /**

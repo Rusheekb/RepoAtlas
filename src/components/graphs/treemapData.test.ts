@@ -5,8 +5,10 @@ import {
   focusOrder,
   folderTrail,
   layoutTreemap,
+  linesMatchArea,
   normalizeFolder,
   parentFolder,
+  tileSizeText,
   type TreemapDatum,
 } from './treemapData'
 import { makeFile } from './testFixtures'
@@ -151,5 +153,56 @@ describe('path helpers', () => {
     expect(parentFolder('a/b/c')).toBe('a/b')
     expect(parentFolder('a')).toBe('')
     expect(normalizeFolder('/x/')).toBe('x')
+  })
+})
+
+describe('honest tile sizes (regression: screenshots and lock files drawn as big as the code)', () => {
+  it('gives images and machine-made files only a small tile', () => {
+    expect(fileWeight({ lines: null, size: 208_000, kind: 'asset' }, 'lines')).toBe(25)
+    expect(fileWeight({ lines: 6980, size: 279_000, kind: 'generated' }, 'lines')).toBe(25)
+    expect(fileWeight({ lines: null, size: 2000, kind: 'asset' }, 'lines')).toBe(5)
+    // Real code we didn't download is still estimated from its size; bytes mode is untouched.
+    expect(fileWeight({ lines: null, size: 4000, kind: 'source' }, 'lines')).toBe(100)
+    expect(fileWeight({ lines: null, size: 208_000, kind: 'asset' }, 'bytes')).toBe(208_000)
+  })
+
+  it('keeps a folder of code bigger than a folder of screenshots', () => {
+    const fs = [
+      makeFile('src/app.py', { lines: 2000, size: 80_000 }),
+      makeFile('docs/_static/debugger.png', { lines: null, size: 208_000, kind: 'asset', layer: 'docs', language: null, fetched: false }),
+      makeFile('docs/_static/shell.png', { lines: null, size: 120_000, kind: 'asset', layer: 'docs', language: null, fetched: false }),
+      makeFile('uv.lock', { lines: null, size: 279_000, kind: 'generated', layer: 'config', language: null, fetched: false }),
+    ]
+    const tree = buildTreemapTree(fs, '')
+    const size = (name: string) => {
+      const d = tree.children?.find((c) => c.name === name) as TreemapDatum
+      const sum = (x: TreemapDatum): number => (x.children ? x.children.reduce((a, c) => a + sum(c), 0) : x.value)
+      return sum(d)
+    }
+    expect(size('src')).toBeGreaterThan(20 * size('docs'))
+    expect(size('src')).toBeGreaterThan(20 * size('uv.lock'))
+  })
+
+  it('labels a tile in lines only when counted lines make up its area, and says "1 line"', () => {
+    const fmt = { compact: (n: number) => String(n), bytes: (n: number) => `${n} B` }
+    const folder = { kind: 'folder' as const, lines: 334, bytes: 5_000_000, fileCount: 407, weight: 50_000, estimated: 49_000 }
+    expect(linesMatchArea(folder)).toBe(false)
+    expect(tileSizeText(folder, 'lines', fmt)).toBe('407 files')
+    expect(tileSizeText({ ...folder, estimated: 0, weight: 334 }, 'lines', fmt)).toBe('334 lines')
+    expect(tileSizeText({ kind: 'file', lines: 1, bytes: 10, fileCount: 1, weight: 1, estimated: 0 }, 'lines', fmt)).toBe('1 line')
+    expect(tileSizeText({ kind: 'file', lines: 0, bytes: 900, fileCount: 1, weight: 22, estimated: 22 }, 'lines', fmt)).toBe('900 B')
+    expect(tileSizeText(folder, 'bytes', fmt)).toBe('5000000 B')
+  })
+
+  it('tracks how much of each folder is estimated', () => {
+    const fs = [
+      makeFile('docs/en/a.md', { lines: 300, size: 9000 }),
+      makeFile('docs/ru/b.md', { lines: null, size: 400_000, fetched: false }),
+    ]
+    const tree = buildTreemapTree(fs, '')
+    const docs = tree.children?.find((c) => c.name === 'docs') as TreemapDatum
+    expect(docs.weight).toBe(10_300)
+    expect(docs.estimated).toBe(10_000)
+    expect(linesMatchArea(docs)).toBe(false)
   })
 })

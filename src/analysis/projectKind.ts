@@ -200,6 +200,43 @@ function norm(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
+interface RootCargo {
+  /** The root Cargo.toml describes a package of its own (not only a workspace of other packages). */
+  hasPackage: boolean
+  hasWorkspace: boolean
+  /** Names (or paths) of the programs declared with [[bin]]. */
+  bins: string[]
+  hasLib: boolean
+}
+
+/** The few facts we need from the root Cargo.toml, read line by line (no backtracking-prone patterns). */
+function readRootCargo(text: string): RootCargo {
+  const out: RootCargo = { hasPackage: false, hasWorkspace: false, bins: [], hasLib: false }
+  let section = ''
+  let binIndex = -1
+  for (const raw of text.split('\n')) {
+    const line = raw.length > 400 ? '' : raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const header = /^\[\[?([A-Za-z0-9_.-]+)\]\]?/.exec(line)
+    if (header) {
+      section = header[1].toLowerCase()
+      if (section === 'package') out.hasPackage = true
+      else if (section === 'workspace') out.hasWorkspace = true
+      else if (section === 'lib') out.hasLib = true
+      if (section === 'bin' && line.startsWith('[[')) {
+        out.bins.push('')
+        binIndex = out.bins.length - 1
+      }
+      continue
+    }
+    if (section === 'bin' && binIndex >= 0) {
+      const m = /^(name|path)[ \t]*=[ \t]*["']([^"']{1,80})["']/.exec(line)
+      if (m && (m[1] === 'name' || !out.bins[binIndex])) out.bins[binIndex] = m[2]
+    }
+  }
+  return out
+}
+
 function safeJson(text: string | undefined): Record<string, unknown> | null {
   if (!text) return null
   try {
@@ -235,9 +272,11 @@ export function detectProjectKind(input: ProjectKindInput): ProjectKind {
     techIds.add(norm(t.name))
   }
   const paths = files.map((f) => f.path)
-  const pathSet = new Set(paths)
-  const lowerBasenames = new Set(paths.map((p) => basename(p).toLowerCase()))
   const core = files.filter((f) => !isPeripheral(f.path))
+  // Telltale file names only count in the project's own folders: examples/with-nextjs/next.config.js doesn't make it a Next.js app.
+  const ownPaths = core.map((f) => f.path)
+  const pathSet = new Set(ownPaths)
+  const lowerBasenames = new Set(ownPaths.map((p) => basename(p).toLowerCase()))
 
   const depMatches = (pattern: string, pool: Set<string>): boolean => {
     const p = pattern.toLowerCase()
@@ -327,7 +366,7 @@ export function detectProjectKind(input: ProjectKindInput): ProjectKind {
     add(swiftUi || lowerBasenames.has('info.plist') ? 'mobile-app' : 'desktop-app', 3, 'It’s an Xcode project — the setup Apple uses for iPhone and Mac apps.')
   }
   for (const { fw, s } of found(DESKTOP).slice(0, 2)) add('desktop-app', s === 2 ? 4 : 2, uses(fw))
-  if (Object.entries(contents).some(([p, c]) => p.endsWith('.py') && !isPeripheral(p) && /^\s*(import tkinter|from tkinter|import PySimpleGUI)/m.test(c))) {
+  if (Object.entries(contents).some(([p, c]) => p.endsWith('.py') && !isPeripheral(p) && /^[ \t]*(import tkinter|from tkinter|import PySimpleGUI)/m.test(c))) {
     add('desktop-app', 2.5, 'It builds desktop windows with Python’s built-in window toolkit.')
   }
   if (files.some((f) => f.ext === 'xaml') && files.some((f) => f.language === 'C#')) add('desktop-app', 2.5, 'It uses XAML screen layouts, the Windows way of designing app windows.')
@@ -372,7 +411,7 @@ export function detectProjectKind(input: ProjectKindInput): ProjectKind {
   // ── Infrastructure & documentation ──────────────────────────────────────────
   if (tfFiles >= 2) add('infrastructure', 3 + (tfFiles >= codeFiles * 0.5 ? 2 : 0), `It has ${count(tfFiles, 'Terraform file')} describing cloud servers and services as code.`)
   if (lowerBasenames.has('chart.yaml')) add('infrastructure', 2, 'It has a Helm chart — a package for running apps on a Kubernetes server cluster.')
-  const k8s = Object.entries(contents).filter(([p, c]) => /\.ya?ml$/.test(p) && /^apiVersion:\s*\S+/m.test(c) && /^kind:\s*(Deployment|Service|StatefulSet|DaemonSet|Ingress|ConfigMap|CronJob)\b/m.test(c)).length
+  const k8s = Object.entries(contents).filter(([p, c]) => /\.ya?ml$/.test(p) && /^apiVersion:[ \t]*\S+/m.test(c) && /^kind:[ \t]*(Deployment|Service|StatefulSet|DaemonSet|Ingress|ConfigMap|CronJob)\b/m.test(c)).length
   if (k8s >= 2) add('infrastructure', 2, `It has ${count(k8s, 'Kubernetes file')} describing how to run apps on a server cluster.`)
   if (paths.some((p) => /(^|\/)(playbook|site)\.ya?ml$/.test(p)) && paths.some((p) => p.startsWith('roles/'))) add('infrastructure', 3, 'It’s laid out like an Ansible project, which sets up servers automatically.')
   for (const { fw } of found(IAC).slice(0, 1)) add('infrastructure', 3, uses(fw))
@@ -387,10 +426,16 @@ export function detectProjectKind(input: ProjectKindInput): ProjectKind {
   if (/\b(tutorial|course|book|guide|cheat ?sheet|interview questions|roadmap|notes)\b/.test(text) && codeFiles < 40) add('documentation', 1.5, 'Its description says it’s mainly something to read and learn from.')
 
   // ── Collections of projects ─────────────────────────────────────────────────
+  // A Rust workspace whose root package builds a program (ripgrep: [[bin]] rg) is one tool split into crates.
+  const cargo = pathSet.has('Cargo.toml') ? readRootCargo(contents['Cargo.toml'] ?? '') : null
+  const rootCargoBin = !!cargo && (cargo.bins.length > 0 || (cargo.hasPackage && (pathSet.has('src/main.rs') || ownPaths.some((p) => /^src\/bin\/[^/]+\.rs$/.test(p)))))
+  const oneProgram = rootCargoBin && !!cargo?.hasPackage
   const workspaces = (manifests.workspaces ?? []).filter((w) => typeof w === 'string' && w.trim())
-  if (workspaces.length > 0) add('monorepo', 2.5, 'It’s set up as a workspace that holds several separate packages together.')
+  if (workspaces.length > 0) add('monorepo', oneProgram ? 0.75 : 2.5, 'It’s set up as a workspace that holds several separate packages together.')
   const pkgManifests = paths.filter((p) => /^(packages|apps|crates|libs|services|modules)\/[^/]+\/(package\.json|Cargo\.toml|pyproject\.toml|go\.mod|setup\.py|pom\.xml)$/.test(p)).length
-  if (pkgManifests >= 3) add('monorepo', 1.5 + Math.min(pkgManifests / 10, 1.5), `It contains ${count(pkgManifests, 'separate package')}, each with its own settings file.`)
+  if (pkgManifests >= 3) {
+    add('monorepo', (1.5 + Math.min(pkgManifests / 10, 1.5)) * (oneProgram ? 0.3 : 1), `It contains ${count(pkgManifests, 'separate package')}, each with its own settings file.`)
+  }
   if (paths.some((p) => /^(lerna|nx|turbo)\.json$|^pnpm-workspace\.yaml$|^go\.work$/.test(p))) add('monorepo', 1, 'It uses a tool for managing many packages in one repository.')
 
   // ── Libraries, command-line tools & plugins ─────────────────────────────────
@@ -409,12 +454,17 @@ export function detectProjectKind(input: ProjectKindInput): ProjectKind {
     if (pkgName && PLUGIN_NAME_RE.test(pkgName)) add('plugin', 3.5, `Its name (${pkgName}) follows the naming pattern for plugins that extend another tool.`)
   }
   if (lowerBasenames.has('plugin.xml') && paths.some((p) => p.includes('META-INF/'))) add('plugin', 3, 'It’s laid out like a plugin for JetBrains code editors.')
-  if (Object.entries(contents).some(([p, c]) => p.endsWith('.php') && depthOf(p) <= 1 && /^\s*\*?\s*Plugin Name:/m.test(c.slice(0, 3000)))) add('plugin', 5, 'It’s a WordPress plugin — an add-on for WordPress websites.')
+  // [ \t]* rather than \s*: under /m, \s* would retry every run of blank lines from each line start (catastrophically slow).
+  if (Object.entries(contents).some(([p, c]) => p.endsWith('.php') && depthOf(p) <= 1 && /^[ \t]*\*?[ \t]*Plugin Name:/m.test(c.slice(0, 3000)))) add('plugin', 5, 'It’s a WordPress plugin — an add-on for WordPress websites.')
 
   const pyproject = contents['pyproject.toml'] ?? ''
   const setupPy = contents['setup.py'] ?? ''
+  const setupCfg = contents['setup.cfg'] ?? ''
   const pyPackaged = !!pyproject || !!setupPy || pathSet.has('setup.cfg')
-  if (/\[project\.scripts\]|\[tool\.poetry\.scripts\]|console_scripts/.test(pyproject + setupPy)) add('cli-tool', 1.5, 'It installs a command you can type in the terminal.')
+  const pyCommand = (manifests.entryHints ?? []).map((h) => /^Runs when you type "([^"]{1,40})" in a terminal \((?:pyproject\.toml|setup\.py|setup\.cfg)\)/.exec(h?.reason ?? '')?.[1]).find(Boolean)
+  if (pyCommand || /\[project\.scripts\]|\[tool\.poetry\.scripts\]|console_scripts/.test(pyproject + setupPy + setupCfg)) {
+    add('cli-tool', 1.5, pyCommand ? `It installs a command you can type in the terminal (“${pyCommand}”).` : 'It installs a command you can type in the terminal.')
+  }
   if (pyPackaged && appSignals === 0) {
     const pkgInit = paths.some((p) => /^(src\/)?[\w-]+\/__init__\.py$/.test(p))
     if (pkgInit) add('library', 2.5, 'It’s packaged so other Python projects can install it and use its code.')
@@ -426,11 +476,22 @@ export function detectProjectKind(input: ProjectKindInput): ProjectKind {
     if (cmdMain > 0) add('cli-tool', 2.5, 'It has a “cmd” folder of programs you run from the terminal.')
     if (mainPkgs.length === 0 && files.some((f) => f.ext === 'go' && !isPeripheral(f.path))) add('library', 3, 'It’s a Go package other programs import — there’s no main program inside it.')
   }
-  if (pathSet.has('Cargo.toml')) {
-    const lib = paths.some((p) => /(^|\/)src\/lib\.rs$/.test(p))
-    const main = paths.some((p) => /(^|\/)src\/main\.rs$/.test(p) || /(^|\/)src\/bin\/[^/]+\.rs$/.test(p))
-    if (lib && !main) add('library', 3, 'It’s a Rust library (it has a lib.rs and no main program).')
-    if (main && !lib) add('cli-tool', 1, 'It builds a program you run (it has a main.rs).')
+  if (cargo) {
+    if (cargo.hasPackage) {
+      // Judge the root package itself; its workspace members are its building blocks.
+      const lib = cargo.hasLib || pathSet.has('src/lib.rs')
+      if (rootCargoBin) {
+        const bin = cargo.bins.find((b) => b && !b.includes('/'))
+        add('cli-tool', cargo.hasWorkspace || !lib ? 3 : 1.5, bin ? `Its main package builds the “${bin}” program you run from the terminal.` : 'It builds a program you run (it has a main.rs).')
+      } else if (lib) {
+        add('library', 3, 'It’s a Rust library (it has a lib.rs and no main program).')
+      }
+    } else {
+      const lib = ownPaths.some((p) => /(^|\/)src\/lib\.rs$/.test(p))
+      const main = ownPaths.some((p) => /(^|\/)src\/main\.rs$/.test(p) || /(^|\/)src\/bin\/[^/]+\.rs$/.test(p))
+      if (lib && !main) add('library', 3, 'It’s a Rust library (it has a lib.rs and no main program).')
+      if (main && !lib) add('cli-tool', 1, 'It builds a program you run (it has a main.rs).')
+    }
   }
   if (paths.some((p) => p.endsWith('.gemspec') && depthOf(p) === 0)) add('library', 2.5, 'It’s packaged as a Ruby gem that other projects can install.')
   const composer = safeJson(contents['composer.json'])
@@ -438,9 +499,12 @@ export function detectProjectKind(input: ProjectKindInput): ProjectKind {
 
   for (const { fw, s } of found(CLI_TOOLS).slice(0, 1)) add('cli-tool', s === 2 ? 2 : 1, uses(fw))
   if (core.some((f) => f.role === 'cli' && f.kind !== 'script')) add('cli-tool', 1, 'It has code that reads commands typed into the terminal.')
-  if (/\b(command[- ]line|cli|terminal|shell tool)\b/.test(text)) add('cli-tool', 2, 'Its description says it’s used from the terminal.')
+  // Saying "command-line" outright is stronger than how it happens to be packaged.
+  const saysCli = /\b(command[- ]line|cli|terminal|shell tool)\b/.test(text)
+  if (saysCli) add('cli-tool', 3, 'Its description says it’s used from the terminal.')
 
-  if (/\b(framework|library|sdk|toolkit|bindings|wrapper|client for|package for)\b/.test(text)) {
+  // "an HTTP client for the API era" describes what a tool does, not that it's a library.
+  if (/\b(framework|library|sdk|toolkit|bindings|wrapper)\b/.test(text)) {
     add('library', /\bframework\b/.test(text) ? 3 : 2.5, /\bframework\b/.test(text) ? 'Its description calls it a framework — a toolbox other programmers build on.' : 'Its description calls it a library — a toolbox other programmers plug into their own projects.')
   }
   if (/\b(npm (?:i|install)|yarn add|pnpm add|bun add|pip install|poetry add|uv add|go get|cargo add|composer require|dotnet add package|gem install)[ \t]+(?!-g\b|--global\b)[@\w]/.test(readmeHead)) {

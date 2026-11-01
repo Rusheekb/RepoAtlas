@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Check, ChevronRight } from 'lucide-react'
 import { cn } from '@/components/ui/cn'
 import { formatNumber } from '@/core/format'
@@ -12,6 +12,11 @@ export interface FileTreeProps {
   onSelect: (path: string) => void
   /** Filter text. */
   query?: string
+  /**
+   * The files matching `query`, when the caller already filtered them (so big projects aren't filtered twice per
+   * keystroke). Leave out to let the tree filter `files` itself.
+   */
+  matches?: AnalyzedFile[] | null
   className?: string
   /** A folder (or file) to open up and scroll to, e.g. when arriving from "Read the code" on a module. */
   revealPath?: string | null
@@ -21,8 +26,11 @@ export interface FileTreeProps {
   label?: string
 }
 
-/** Search results are capped so a one-letter query can't put thousands of rows on the page. */
-export const MAX_SEARCH_ROWS = 1500
+/**
+ * Search results are capped so a one-letter query can't put thousands of rows on the page (each keystroke would
+ * redraw them all). A few hundred rows is more than anyone scans; typing more narrows it down.
+ */
+export const MAX_SEARCH_ROWS = 250
 const INDENT_PX = 14
 
 function fileEmoji(file: AnalyzedFile): string {
@@ -41,14 +49,17 @@ function Highlighted({ name, terms }: { name: string; terms: readonly string[] }
   )
 }
 
-/** Collapsible folder tree with role emoji + layer dot per file, folders auto-expanded to the selection, keyboard navigable. */
-export function FileTree(props: FileTreeProps) {
-  const { files, selectedPath = null, onSelect, query = '', className, revealPath = null, isSeen, label = 'Project files' } = props
+/**
+ * Collapsible folder tree with role emoji + layer dot per file, folders auto-expanded to the selection, keyboard navigable.
+ * Memoised: it only redraws when its own props change (not on every keystroke of a search box around it).
+ */
+export const FileTree = memo(function FileTree(props: FileTreeProps) {
+  const { files, selectedPath = null, onSelect, query = '', matches: givenMatches, className, revealPath = null, isSeen, label = 'Project files' } = props
 
   const fullTree = useMemo(() => buildTree(files), [files])
   const terms = useMemo(() => queryTerms(query), [query])
   const searching = terms.length > 0
-  const matches = useMemo(() => (searching ? filterFiles(files, query) : null), [files, query, searching])
+  const matches = useMemo(() => (searching ? (givenMatches ?? filterFiles(files, query)) : null), [files, query, searching, givenMatches])
   const searchTree = useMemo(() => (matches ? buildTree(matches) : null), [matches])
   const tree = searchTree ?? fullTree
 
@@ -333,5 +344,4 @@ export function FileTree(props: FileTreeProps) {
       )}
     </div>
   )
-}
-
+})

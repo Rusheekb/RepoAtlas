@@ -68,7 +68,7 @@ describe('buildLearningPath', () => {
     const modules = steps.filter((s) => s.target.type === 'module')
     expect(modules.length).toBeGreaterThanOrEqual(2)
     expect(modules[0].target).toEqual({ type: 'module', id: 'src/lib' })
-    expect(modules[0].description).toMatch(/biggest part of the project/)
+    expect(modules[0].description).toMatch(/biggest part of the main code/)
     expect(modules[0].description).toMatch(/A good file to start with is db\.ts\./)
     expect(modules.some((s) => s.target.type === 'module' && s.target.id === 'tests')).toBe(false)
     expect(steps.find((s) => s.title.startsWith('Meet the most relied-on file'))?.target).toEqual({ type: 'file', path: 'src/lib/db.ts' })
@@ -101,5 +101,29 @@ describe('rankModules', () => {
     expect(ranked[0]).toBe('src/lib')
     expect(ranked).not.toContain('tests')
     expect(ranked).not.toContain(ROOT_MODULE_ID)
+  })
+
+  it('says “the biggest part of the main code”, since tests and docs are left out of the ranking', () => {
+    const steps = buildLearningPath(input())
+    const text = steps.map((st) => st.description).join(' ')
+    expect(text).not.toMatch(/biggest part of the project/)
+    expect(text).toMatch(/biggest part of the main code/)
+  })
+
+  it('counts the hub’s users the same way as the overview, tests included', () => {
+    const files: Record<string, AnalyzedFile> = {
+      'src/main.ts': makeFile('src/main.ts', { isEntry: true, lines: 80, moduleId: 'src' }),
+      'src/lib/db.ts': makeFile('src/lib/db.ts', { importedBy: ['src/a.ts', 'src/b.ts', 'tests/db.test.ts'], lines: 200, moduleId: 'src/lib' }),
+      'src/a.ts': makeFile('src/a.ts'),
+      'src/b.ts': makeFile('src/b.ts'),
+      'tests/db.test.ts': makeFile('tests/db.test.ts', { kind: 'test', role: 'test', layer: 'test' }),
+    }
+    const hub = buildLearningPath(input({ files })).find((st) => st.id === 'file:src/lib/db.ts')
+    expect(hub?.description).toMatch(/^3 other files \(1 of them is a test\) use it/)
+  })
+
+  it('calls the project by the same name as the overview', () => {
+    const steps = buildLearningPath(input(), { name: 'httpie' })
+    expect(steps.find((st) => st.id === 'big-picture')?.description).toContain('what httpie is')
   })
 })

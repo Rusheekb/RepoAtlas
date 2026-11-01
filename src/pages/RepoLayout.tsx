@@ -8,7 +8,8 @@ import { PageErrorBoundary } from '@/components/shell/PageErrorBoundary'
 import { RepoHeader } from '@/components/shell/RepoHeader'
 import { Sidebar } from '@/components/shell/Sidebar'
 import { SiteHeader } from '@/components/shell/SiteHeader'
-import { VIEW_ORDER } from '@/core/labels'
+import { MarkdownImageSources } from '@/components/ui'
+import { VIEW_INFO, VIEW_ORDER } from '@/core/labels'
 import { repoKey } from '@/core/routes'
 import type { RepoRef, ViewId } from '@/core/types'
 import { parseRepoInput } from '@/github'
@@ -27,6 +28,48 @@ const INVALID: RepoLoadError = {
 export function viewFromPath(pathname: string): ViewId {
   const seg = pathname.split('/').filter(Boolean)[3]
   return seg && (VIEW_ORDER as string[]).includes(seg) ? (seg as ViewId) : 'overview'
+}
+
+/** How long to wait for a newly opened view (loaded on demand) to show its heading before giving up. */
+const HEADING_WAIT_MS = 5000
+
+/** Focus already moved somewhere on purpose (the explain panel, a dialog, or something the new view focused itself). */
+function focusIsSettled(main: HTMLElement, startedOn: Element | null): boolean {
+  const active = document.activeElement
+  if (!active || active === document.body) return false
+  if (active.closest('dialog[open], [role="dialog"]')) return true
+  return active !== startedOn && main.contains(active)
+}
+
+/**
+ * After switching views, move focus to the new view's main heading so screen readers announce the change (and the next
+ * Tab continues inside the view). Waits for the heading of a view that is still loading. Leaves focus alone when it
+ * moved somewhere else meanwhile (the explain panel, a dialog, something inside the view). Returns a cleanup function.
+ * Exported for tests.
+ */
+export function focusViewHeading(main: HTMLElement | null, waitMs = HEADING_WAIT_MS): () => void {
+  if (!main) return () => {}
+  const startedOn = document.activeElement
+  let done = false
+  const tryFocus = (): boolean => {
+    if (done) return true
+    if (focusIsSettled(main, startedOn)) return (done = true)
+    const heading = main.querySelector<HTMLElement>('h1')
+    if (!heading) return false
+    if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1')
+    heading.focus({ preventScroll: true })
+    return (done = true)
+  }
+  if (tryFocus()) return () => {}
+  const observer = typeof MutationObserver === 'function' ? new MutationObserver(() => tryFocus() && stop()) : null
+  const timer = window.setTimeout(() => stop(), waitMs)
+  function stop() {
+    done = true
+    observer?.disconnect()
+    window.clearTimeout(timer)
+  }
+  observer?.observe(main, { childList: true, subtree: true })
+  return stop
 }
 
 /** Full-page frame for the loading and error screens: a simple header above a scrolling area. */
@@ -91,16 +134,29 @@ export default function RepoLayout() {
 
   const fullName = ready?.meta.fullName
   const description = ready?.meta.description ?? null
+  const isPrivate = ready?.meta.isPrivate ?? false
   useEffect(() => {
-    if (fullName) addRecent(fullName, description)
-  }, [fullName, description, addRecent])
+    if (fullName) addRecent(fullName, description, isPrivate)
+  }, [fullName, description, isPrivate, addRecent])
 
+  // Each view has its own tab title ("How It Connects · pallets/flask · RepoAtlas"), so history and tabs tell them apart.
   useEffect(() => {
-    document.title = `${fullName ?? `${owner}/${repo}`} · RepoAtlas`
-    return () => {
+    document.title = fullName ? `${VIEW_INFO[view].label} · ${fullName} · RepoAtlas` : `${owner}/${repo} · RepoAtlas`
+  }, [fullName, owner, repo, view])
+  useEffect(
+    () => () => {
       document.title = 'RepoAtlas'
-    }
-  }, [fullName, owner, repo])
+    },
+    [],
+  )
+
+  // Pictures stored in this repository may show inside Claude's answers; pictures from anywhere else never load by themselves.
+  const metaOwner = ready?.meta.owner
+  const metaRepo = ready?.meta.repo
+  const imageSources = useMemo(
+    () => (metaOwner && metaRepo ? [`https://raw.githubusercontent.com/${encodeURIComponent(metaOwner)}/${encodeURIComponent(metaRepo)}/`] : []),
+    [metaOwner, metaRepo],
+  )
 
   // Visiting a view ticks off the learning-path steps that point at it.
   useEffect(() => {
@@ -114,6 +170,17 @@ export default function RepoLayout() {
   useEffect(() => {
     mainRef.current?.scrollTo?.({ top: 0 })
   }, [pathname])
+
+  // Switching views (not the first view after loading, and not ?query changes within a view): focus the new heading.
+  const shownPath = useRef<string | null>(null)
+  const isReady = Boolean(ready)
+  useEffect(() => {
+    if (!isReady) return
+    const previous = shownPath.current
+    shownPath.current = pathname
+    if (previous === null || previous === pathname) return
+    return focusViewHeading(mainRef.current)
+  }, [pathname, isReady])
 
   // Added a GitHub token from the error screen? Try again as soon as Settings closes.
   const tokenAtError = useRef<string | null>(null)
@@ -152,6 +219,7 @@ export default function RepoLayout() {
   }
 
   return (
+    <MarkdownImageSources.Provider value={imageSources}>
     <div className="flex h-full flex-col bg-canvas">
       <button
         type="button"
@@ -172,5 +240,6 @@ export default function RepoLayout() {
       <ExplainPanel />
       <SettingsDialog />
     </div>
+    </MarkdownImageSources.Provider>
   )
 }

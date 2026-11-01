@@ -1,45 +1,11 @@
-import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { repoPath } from '@/core/routes'
 import type { ViewId } from '@/core/types'
 import { useRepoStore } from '@/state/repo'
-import { useSettings } from '@/state/settings'
 
-function hasMatchMedia(): boolean {
-  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-}
-
-/** Subscribe to a CSS media query. Falls back to `fallback` where matchMedia is unavailable (tests, old browsers). */
-export function useMediaQuery(query: string, fallback = false): boolean {
-  const subscribe = useCallback(
-    (onChange: () => void) => {
-      if (!hasMatchMedia()) return () => {}
-      const mq = window.matchMedia(query)
-      mq.addEventListener?.('change', onChange)
-      return () => mq.removeEventListener?.('change', onChange)
-    },
-    [query],
-  )
-  const get = useCallback(() => (hasMatchMedia() ? window.matchMedia(query).matches : fallback), [query, fallback])
-  return useSyncExternalStore(subscribe, get, () => fallback)
-}
-
-/** True on screens wide enough for side-by-side panels (Tailwind `lg`, 1024px). */
-export function useIsDesktop(): boolean {
-  return useMediaQuery('(min-width: 1024px)', true)
-}
-
-export function usePrefersReducedMotion(): boolean {
-  return useMediaQuery('(prefers-reduced-motion: reduce)', false)
-}
-
-/** The theme actually on screen ('system' resolved through the OS setting). */
-export function useResolvedTheme(): 'light' | 'dark' {
-  const pref = useSettings((s) => s.theme)
-  const systemDark = useMediaQuery('(prefers-color-scheme: dark)', false)
-  if (pref === 'system') return systemDark ? 'dark' : 'light'
-  return pref
-}
+// Screen and theme hooks live in ./media (no repository code), and are re-exported here for existing callers.
+export { useIsDesktop, useMediaQuery, usePrefersReducedMotion, useResolvedTheme } from './media'
 
 /**
  * Links and navigation inside the current repository, keeping any ?ref= the reader asked for.

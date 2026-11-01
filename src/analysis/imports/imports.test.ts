@@ -115,6 +115,42 @@ describe('JavaScript / TypeScript imports', () => {
   it('works when language is empty (detects from path)', () => {
     expect(specs(extractImports('src/a.mjs', "import x from 'y'", ''))).toEqual(['y'])
   })
+
+  it('reads import/export clauses of every shape (scanned without a backtracking regex)', () => {
+    const src = [
+      "import fromage from 'cheese'", // 1
+      "import from 'nothing'", // 2 (not an import clause)
+      'import', // 3
+      '{', // 4
+      '  a,', // 5
+      '  b as c', // 6
+      '}', // 7
+      "from 'multi'", // 8
+      'import x, * as ns from "both"', // 9
+      "import {p} from 'one' import {q} from 'two'", // 10
+      "export { d as e } from './re'", // 11
+      "export * as all from './star'", // 12
+      "myexport { z } from 'not-a-keyword'", // 13
+    ].join('\n')
+    const out = extractImports('a.ts', src, 'TypeScript')
+    expect(out.map((i) => [i.specifier, i.line, i.kind, i.names])).toEqual([
+      ['cheese', 1, 'import', ['fromage']],
+      ['multi', 3, 'import', ['a', 'b']],
+      ['both', 9, 'import', ['x', 'ns']],
+      ['one', 10, 'import', ['p']],
+      ['two', 10, 'import', ['q']],
+      ['./re', 11, 'export', ['d']],
+      ['./star', 12, 'export', ['all']],
+    ])
+  })
+
+  it('reads statements that end at a ";" or ")" without re-reading the file for each one', () => {
+    expect(specs(extractImports('a.rs', 'use a::b;\npub use c::{d, e};\nuse f', 'Rust'))).toEqual(['a::b', 'c::d', 'c::e'])
+    expect(specs(extractImports('a.go', 'import (\n\t"fmt"\n)\nimport (\n\t"os"\n', 'Go'))).toEqual(['fmt'])
+    expect(specs(extractImports('a.php', '<?php\nuse App\\Models\\User;\nuse App\\Http', 'PHP'))).toEqual(['App\\Models\\User'])
+    expect(specs(extractImports('a.html', '<link rel="stylesheet" href="a.css"><link rel="stylesheet" href="b.css"', 'HTML'))).toEqual(['a.css'])
+    expect(specs(extractImports('A.sol', 'import "./A.sol";\nimport {B} from "./B.sol";\nimport "./C.sol"', 'Solidity'))).toEqual(['./A.sol', './B.sol'])
+  })
 })
 
 describe('Vue / Svelte / Astro / MDX / HTML', () => {

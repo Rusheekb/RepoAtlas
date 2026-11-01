@@ -102,6 +102,49 @@ function cleanRef(raw: string | undefined): string | undefined {
   return ref ? ref : undefined
 }
 
+/** How many path segments after /tree/ or /blob/ may still belong to a branch name ("release/1.x", "users/ann/fix"). */
+export const MAX_REF_SEGMENTS = 6
+
+/** Branch names that are almost never the start of a longer, slash-separated branch name. */
+const WHOLE_BRANCH_NAMES = new Set([
+  'main', 'master', 'develop', 'development', 'dev', 'trunk', 'stable', 'next', 'canary', 'staging', 'production', 'prod',
+  'gh-pages', 'default', 'latest', 'head',
+])
+
+/** A first segment that is surely the whole ref: a common branch name, a commit SHA or a version tag like v1.2.3. */
+function isWholeRef(first: string): boolean {
+  return WHOLE_BRANCH_NAMES.has(first.toLowerCase()) || /^[0-9a-f]{7,40}$/i.test(first) || /^v?\d+(?:\.\d+)*(?:[-+.][\w.-]*)?$/i.test(first)
+}
+
+/**
+ * The ref part of a github.com link's path ("…/tree/<these segments>"). A branch may itself contain slashes
+ * ("release/1.x"), and the link does not say where the branch ends and the folder or file begins, so unless the first
+ * segment is surely a whole ref, the first few segments are kept together ("release/1.x/src/dir"). Loading then tries
+ * that, and its shorter beginnings, against GitHub (see refCandidates).
+ * "refs/heads/<branch>" and "refs/tags/<tag>" lose their prefix.
+ */
+function refFromPath(segments: string[]): string | undefined {
+  let segs = segments.map((x) => safeDecode(x).trim()).filter(Boolean)
+  if (segs[0] === 'refs' && (segs[1] === 'heads' || segs[1] === 'tags') && segs.length > 2) segs = segs.slice(2)
+  const first = segs[0]
+  if (!first) return undefined
+  if (segs.length === 1 || isWholeRef(first)) return first
+  return segs.slice(0, MAX_REF_SEGMENTS).join('/')
+}
+
+/**
+ * Refs to try, in order, for a ref taken from a pasted link: the whole thing first (a real "feature/x" branch costs
+ * one request), then its beginnings from the shortest ("feature", "feature/x", …). Refs without a slash are tried as is.
+ */
+export function refCandidates(ref: string): string[] {
+  const clean = ref.trim()
+  if (!clean.includes('/')) return clean ? [clean] : []
+  const segs = clean.split('/').filter(Boolean).slice(0, MAX_REF_SEGMENTS)
+  const out = [segs.join('/')]
+  for (let i = 1; i < segs.length; i++) out.push(segs.slice(0, i).join('/'))
+  return [...new Set(out)]
+}
+
 /** Build the result from github.com-style path segments: owner / repo / [section / ref …]. */
 function fromSegments(segments: string[]): RepoRef | null {
   if (segments.length < 2) return null
@@ -112,10 +155,12 @@ function fromSegments(segments: string[]): RepoRef | null {
   let ref: string | undefined
   if (segments.length >= 4) {
     const section = segments[2].toLowerCase()
-    if (REF_SECTIONS.has(section)) {
+    if (section === 'commit') {
       ref = cleanRef(segments[3])
+    } else if (REF_SECTIONS.has(section)) {
+      ref = refFromPath(segments.slice(3))
     } else if (section === 'releases' && segments[3] === 'tag' && segments.length >= 5) {
-      ref = cleanRef(segments[4])
+      ref = refFromPath(segments.slice(4))
     }
   }
 
@@ -130,8 +175,10 @@ function fromSegments(segments: string[]): RepoRef | null {
  *   "https://github.com/owner/repo.git"
  *   "git@github.com:owner/repo.git"
  *   "https://github.com/owner/repo/tree/branch-name"            → ref "branch-name"
- *   "https://github.com/owner/repo/tree/feature/x/src/dir"       → ref "feature" (ambiguous: take first segment)
- *   "https://github.com/owner/repo/blob/main/src/index.ts"      → ref "main"
+ *   "https://github.com/owner/repo/tree/feature/x/src/dir"       → ref "feature/x/src/dir" (the branch may contain
+ *                                                                  slashes: loading tries it and "feature", "feature/x" …)
+ *   "https://github.com/owner/repo/blob/main/src/index.ts"      → ref "main" (common branch names, SHAs and versions
+ *                                                                  are taken as the whole ref)
  *   "https://github.com/owner/repo/commit/<sha>"                → ref "<sha>"
  *   "https://github.com/owner/repo?tab=readme"                  → ignore query/hash
  * Returns null when the input is not a GitHub repository reference.
@@ -203,11 +250,10 @@ export function parseRepoInput(input: string): RepoRef | null {
   if (head === 'raw.githubusercontent.com') {
     if (segments.length < 2) return null
     // raw.githubusercontent.com/owner/repo/<ref>/<path> or …/refs/heads/<branch>/<path>
-    let refSeg: string | undefined = segments[2]
-    if (refSeg === 'refs' && (segments[3] === 'heads' || segments[3] === 'tags')) refSeg = segments[4]
     const base = fromSegments(segments.slice(0, 2))
     if (!base) return null
-    const ref = cleanRef(refSeg)
+    // The last segment is the file itself, never part of the branch.
+    const ref = refFromPath(segments.slice(2, -1).length ? segments.slice(2, -1) : segments.slice(2))
     return ref ? { ...base, ref } : base
   }
 

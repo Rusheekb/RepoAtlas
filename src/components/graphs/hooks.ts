@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
 export interface ElementSize {
   width: number
@@ -29,6 +29,37 @@ export function useElementSize<T extends Element>(): [RefObject<T | null>, Eleme
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+  return [ref, size]
+}
+
+/**
+ * Like useElementSize, for an element that may come and go (e.g. only rendered in one view mode): pass the returned
+ * callback as the element's `ref`. The size is 0 × 0 while the element isn't mounted.
+ */
+export function useMeasuredElement<T extends Element>(): [(el: T | null) => void, ElementSize] {
+  const [el, setEl] = useState<T | null>(null)
+  const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 })
+  const ref = useCallback((node: T | null) => setEl(node), [])
+  useLayoutEffect(() => {
+    const update = (w: number, h: number) => {
+      const width = Math.max(0, Math.round(w))
+      const height = Math.max(0, Math.round(h))
+      setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }))
+    }
+    if (!el) {
+      update(0, 0)
+      return
+    }
+    const rect = el.getBoundingClientRect()
+    update(rect.width, rect.height)
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[entries.length - 1]
+      if (entry) update(entry.contentRect.width, entry.contentRect.height)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [el])
   return [ref, size]
 }
 

@@ -8,12 +8,53 @@ const RUST_BUILTIN = new Set(['std', 'core', 'alloc', 'proc_macro', 'test'])
 interface Crate {
   /** Folder containing Cargo.toml. */
   dir: string
-  /** Crate name as used in code (dashes → underscores). */
+  /** Crate name as used in code (dashes → underscores; the [lib] name when it has one). */
   name: string | null
   /** Library root (src/lib.rs or [lib] path), if any. */
   lib: string | null
-  /** Binary root (src/main.rs), if any. */
+  /** Main binary root (src/main.rs, or the first [[bin]] path), if any. */
   main: string | null
+  /** Every binary root: src/main.rs plus each [[bin]] `path` (e.g. ripgrep's crates/core/main.rs). */
+  bins: string[]
+}
+
+/** One `[table]` or `[[array-table]]` of a Cargo.toml, with its `key = "string"` entries. */
+interface TomlTable {
+  header: string
+  values: Map<string, string>
+}
+
+/**
+ * Just enough TOML for Cargo.toml: table headers and plain string values.
+ * Line by line (no regex over the whole file), so a huge or odd manifest can never stall the page.
+ */
+export function cargoTables(text: string): TomlTable[] {
+  const out: TomlTable[] = [{ header: '', values: new Map() }]
+  let inMultiline = false
+  for (const raw of text.split('\n')) {
+    const line = raw.trim()
+    // Skip the inside of multi-line strings (`description = """ … """`), which may hold anything.
+    const fences = line.split('"""').length - 1 + line.split("'''").length - 1
+    if (inMultiline) {
+      if (fences % 2 === 1) inMultiline = false
+      continue
+    }
+    if (fences % 2 === 1) inMultiline = true
+    if (!line || line.startsWith('#')) continue
+    if (line.startsWith('[')) {
+      const h = /^\[\[?\s*([^\]]+?)\s*\]\]?/.exec(line.length > 500 ? line.slice(0, 500) : line)
+      if (h) {
+        out.push({ header: line.startsWith('[[') ? `[${h[1]}]` : h[1], values: new Map() })
+        continue
+      }
+    }
+    const kv = /^([A-Za-z0-9_.-]+)[ \t]*=[ \t]*(?:"([^"]*)"|'([^']*)')/.exec(line.length > 2000 ? line.slice(0, 2000) : line)
+    if (kv) {
+      const table = out[out.length - 1]
+      if (!table.values.has(kv[1])) table.values.set(kv[1], kv[2] ?? kv[3] ?? '')
+    }
+  }
+  return out
 }
 
 export class RustResolver {
@@ -25,17 +66,30 @@ export class RustResolver {
     if (this.cratesCache) return this.cratesCache
     const repo = this.repo
     const out: Crate[] = []
+    const existing = (dir: string, rel: string | undefined): string | null => {
+      if (!rel) return null
+      const p = joinPath(dir, rel)
+      return repo.has(p) ? p : null
+    }
     for (const p of repo.byBasename('Cargo.toml')) {
       const dir = dirname(p)
       const prefix = dir ? `${dir}/` : ''
-      const text = repo.content(p) ?? ''
-      const pkgSection = /^\s*\[package\]([\s\S]*?)(?=^\s*\[|$(?![\s\S]))/m.exec(text)?.[1] ?? ''
-      const name = /^\s*name\s*=\s*["']([^"']+)["']/m.exec(pkgSection)?.[1]?.replace(/-/g, '_') ?? null
-      const libSection = /^\s*\[lib\]([\s\S]*?)(?=^\s*\[|$(?![\s\S]))/m.exec(text)?.[1] ?? ''
-      const libPath = /^\s*path\s*=\s*["']([^"']+)["']/m.exec(libSection)?.[1]
-      const lib = libPath && repo.has(joinPath(dir, libPath)) ? joinPath(dir, libPath) : repo.has(`${prefix}src/lib.rs`) ? `${prefix}src/lib.rs` : null
-      const main = repo.has(`${prefix}src/main.rs`) ? `${prefix}src/main.rs` : null
-      out.push({ dir, name, lib, main })
+      const tables = cargoTables(repo.content(p) ?? '')
+      const pkg = tables.find((t) => t.header === 'package')
+      const libTable = tables.find((t) => t.header === 'lib')
+      const pkgName = pkg?.values.get('name')
+      const libName = libTable?.values.get('name')
+      const name = (libName || pkgName)?.replace(/-/g, '_') ?? null
+      const lib = existing(dir, libTable?.values.get('path')) ?? (repo.has(`${prefix}src/lib.rs`) ? `${prefix}src/lib.rs` : null)
+      const bins: string[] = []
+      const conventional = repo.has(`${prefix}src/main.rs`) ? `${prefix}src/main.rs` : null
+      if (conventional) bins.push(conventional)
+      for (const t of tables) {
+        if (t.header !== '[bin]') continue
+        const bin = existing(dir, t.values.get('path'))
+        if (bin && !bins.includes(bin)) bins.push(bin)
+      }
+      out.push({ dir, name, lib, main: bins[0] ?? null, bins })
     }
     // Repos without Cargo.toml in the file list: infer crates from src/lib.rs / src/main.rs.
     if (!out.length) {
@@ -44,11 +98,13 @@ export class RustResolver {
         const dir = dirname(dirname(p))
         if (out.some((c) => c.dir === dir)) continue
         const prefix = dir ? `${dir}/` : ''
+        const main = repo.has(`${prefix}src/main.rs`) ? `${prefix}src/main.rs` : null
         out.push({
           dir,
           name: null,
           lib: repo.has(`${prefix}src/lib.rs`) ? `${prefix}src/lib.rs` : null,
-          main: repo.has(`${prefix}src/main.rs`) ? `${prefix}src/main.rs` : null,
+          main,
+          bins: main ? [main] : [],
         })
       }
     }
@@ -79,8 +135,22 @@ export class RustResolver {
     }
     if (rel === 'build.rs') return file
     if (!crate) return null
-    if (crate.main && file === crate.main) return crate.main
-    return crate.lib ?? crate.main
+    if (crate.bins.includes(file)) return file
+    // A file belongs to the root whose folder holds it most closely: ripgrep's crates/core/flags/mod.rs belongs to
+    // the [[bin]] at crates/core/main.rs, while src/x.rs of a crate with both src/lib.rs and src/main.rs belongs to the library.
+    let best: string | null = null
+    let bestDepth = -1
+    for (const root of [crate.lib, ...crate.bins]) {
+      if (!root) continue
+      const d = dirname(root)
+      if (d && !file.startsWith(`${d}/`)) continue
+      const depth = d ? d.split('/').length : 0
+      if (depth > bestDepth) {
+        best = root
+        bestDepth = depth
+      }
+    }
+    return best ?? crate.lib ?? crate.main
   }
 
   private isRoot(file: string): boolean {

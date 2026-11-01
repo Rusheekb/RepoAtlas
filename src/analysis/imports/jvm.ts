@@ -15,7 +15,7 @@ export function expandScalaImport(clause: string): string[] {
     if (!p) continue
     const brace = p.indexOf('{')
     if (brace === -1) {
-      const path = clean(p.split(/\s+as\s+/)[0]).replace(/\.(?:_|given)$/, '.*')
+      const path = clean(p.split(/(?<!\s)\s+as\s+/)[0]).replace(/\.(?:_|given)$/, '.*')
       if (/^[\w.]+(?:\.\*)?$/.test(path)) out.push(path)
       continue
     }

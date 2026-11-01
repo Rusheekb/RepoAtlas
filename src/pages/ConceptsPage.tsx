@@ -113,6 +113,7 @@ export default function ConceptsPage() {
           error={ai.error}
           errorKind={ai.errorKind}
           hasData={Boolean(aiMap)}
+          stale={Boolean(ai.stale)}
           onGenerate={generate}
           onCancel={ai.cancel}
           generateLabel="Generate a smarter map with Claude"

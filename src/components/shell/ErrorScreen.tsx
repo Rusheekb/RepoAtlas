@@ -1,6 +1,6 @@
 import { Home, KeyRound, RotateCcw } from 'lucide-react'
 import { Link } from 'react-router'
-import { Button } from '@/components/ui'
+import { Button } from '@/components/ui/Button'
 import { useUi } from '@/state/ui'
 import { LogoMark } from './Logo'
 

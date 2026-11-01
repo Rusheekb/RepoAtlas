@@ -701,6 +701,8 @@ export function classifyFile(path: string, ctx: ClassifyContext): Classification
   if (testByName || zones.includes('test')) {
     if (lower === 'conftest.py') return C('test', 'fixture', 'test')
     const inFixtures = hasAny(segs, FIXTURE_DIRS)
+    // Images, archives and other binaries the tests use are media, not lines of test code.
+    if (ASSET_EXT.has(ext)) return C('asset', 'fixture', 'test')
     if (!isCodeExt(ext, ctx.language) || inFixtures) return C('test', 'fixture', 'test')
     const helperFolder = segs.some((s) => ['support', 'helpers', 'helper', 'utils', 'util', 'common', 'shared', 'setup', 'test-utils', 'testutils', 'test_utils'].includes(s))
     if (!testByName && (helperFolder || /^(utils?|helpers?|setup|support|common|testutils?|test[-_]?utils?|test[-_]?helpers?)\.[a-z]+$/.test(lower))) return C('test', 'util', 'test')

@@ -15,10 +15,21 @@ const MAX_LINE = 2000
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Lines {
-  /** Comments and string contents blanked (match structure here). */
+  /** Comments and string contents blanked (columns line up with `text`: indentation, signatures). */
   code: string[]
   /** Comments blanked, strings intact (signatures come from here). */
   text: string[]
+  /**
+   * `code` with every run of blank space squeezed to one character: run the declaration regexes on this.
+   * Patterns such as `function\s*\*?\s*(name)?\s*\(` can split a long run of spaces between their `\s*` parts in
+   * countless ways, so a single line of spaces in a hostile file could otherwise freeze the page for minutes.
+   */
+  match: string[]
+}
+
+/** Squeeze runs of blank space to their first character (indentation and other columns are read from `code`). */
+function squeeze(line: string): string {
+  return line.length < 2 ? line : line.replace(/\s{2,}/g, (run) => run[0])
 }
 
 function toLines(content: string, language: string): Lines {
@@ -32,7 +43,7 @@ function toLines(content: string, language: string): Lines {
       text[i] = ''
     }
   }
-  return { code, text }
+  return { code, text, match: code.map(squeeze) }
 }
 
 class Out {
@@ -309,17 +320,17 @@ const JS_FUNC_RHS = /^(?:async\s*)?(?:function\b|\([^)]*\)\s*(?::\s*[^=]+?)?\s*=
 const JS_WRAPPER_RHS = /^(?:React\.)?(?:memo|forwardRef|lazy|observer|defineComponent|defineAsyncComponent|withRouter|connect\([^)]*\)|styled(?:\.\w+|\([^)]*\)))\s*[(`<]/
 const JS_METHOD = /^\s*((?:(?:public|private|protected|static|async|override|readonly|abstract|declare|get|set|accessor)\s+)*)\*?\s*(#?[A-Za-z_$][\w$]*)\s*[?!]?\s*(?:<[^>(]*>)?\s*\(/
 const JS_ARROW_PROP = /^\s*((?:(?:public|private|protected|static|readonly|override)\s+)*)(#?[A-Za-z_$][\w$]*)\s*[?!]?\s*(?::[^=]+)?=\s*(?:async\s+)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*(?::\s*[^=]+)?=>/
-const JSX_RETURN = /(?:\breturn\s*\(?\s*|=>\s*\(?\s*)<(?:[A-Za-z][\w.]*|>)/
+const JSX_RETURN = /(?:\breturn|=>)\s*(?:\(\s*)?<(?:[A-Za-z][\w.]*|>)/
 
 function jsSymbols(lines: Lines, out: Out, componentFile: boolean): void {
-  const joined = lines.code.join('\n')
+  const joined = lines.match.join('\n')
   const jsxFile = componentFile || JSX_RETURN.test(joined)
   const exportedNames: string[] = []
 
   const fnKind = (name: string): SymbolKind => (isHook(name) ? 'hook' : jsxFile && isPascal(name) ? 'component' : 'function')
 
   braceEngine(lines, (i, scope) => {
-    const code = lines.code[i]
+    const code = lines.match[i]
     const line = i + 1
     if (scope.kind === 'member') {
       const cls = scope.container
@@ -374,7 +385,7 @@ function jsSymbols(lines: Lines, out: Out, componentFile: boolean): void {
       const exported = !!m[1]
       // The value may continue on the next lines ("const X = (\n props\n) => {").
       let rhs = assignment.value.trim()
-      for (let k = i + 1; rhs.length < 200 && k < Math.min(lines.code.length, i + 4); k++) rhs += ' ' + lines.code[k].trim()
+      for (let k = i + 1; rhs.length < 200 && k < Math.min(lines.code.length, i + 4); k++) rhs += ' ' + lines.match[k].trim()
       const typeAnn = assignment.type
       if (JS_FUNC_RHS.test(rhs) || /(?:^|\b)(?:React\.)?FC\b|FunctionComponent|=>/.test(typeAnn)) {
         out.add(name, fnKind(name), line, exported, signature(lines, i, /^(?:async\s*)?function\b/.test(rhs) ? 'brace' : 'arrow'))
@@ -392,7 +403,7 @@ function jsSymbols(lines: Lines, out: Out, componentFile: boolean): void {
     m = JS_EXPORT_LIST.exec(code)
     if (m) {
       for (const part of m[1].split(',')) {
-        const local = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]?.trim()
+        const local = part.trim().replace(/^type\s+/, '').split(/(?<!\s)\s+as\s+/)[0]?.trim()
         if (local) exportedNames.push(local)
       }
       return
@@ -447,7 +458,7 @@ function pythonSymbols(lines: Lines, out: Out): void {
     }
     if (inBrackets || !/\S/.test(line)) continue
     const indent = line.length - line.trimStart().length
-    const t = line.trim()
+    const t = lines.match[i].trim()
     if (classIndent >= 0 && indent <= classIndent) {
       classIndent = -1
       memberIndent = -1
@@ -500,7 +511,7 @@ function goSymbols(lines: Lines, out: Out): void {
   let depth = 0
   let group: 'const' | 'var' | 'type' | null = null
   for (let i = 0; i < code.length && !out.full(); i++) {
-    const line = code[i]
+    const line = lines.match[i]
     const atTop = depth === 0
     if (group && /^\s*\)/.test(line)) group = null
     else if (group && atTop) {
@@ -550,7 +561,7 @@ const RS_MACRO = /^\s*(?:#\[macro_export\]\s*)?macro_rules!\s*([A-Za-z_]\w*)/
 
 function rustSymbols(lines: Lines, out: Out): void {
   braceEngine(lines, (i, scope) => {
-    const code = lines.code[i]
+    const code = lines.match[i]
     const line = i + 1
     if (scope.kind === 'member') {
       const m = RS_FN.exec(code)
@@ -602,7 +613,7 @@ const KT_ALIAS = /^\s*((?:public|private|internal)\s+)?(?:typealias|type)\s+([A-
 function jvmSymbols(lines: Lines, out: Out, lang: string): void {
   const java = lang === 'java' || lang === 'groovy' || lang === 'apex'
   braceEngine(lines, (i, scope) => {
-    const code = lines.code[i]
+    const code = lines.match[i]
     const line = i + 1
     const before = annotationsBefore(lines, i)
     if (java) {
@@ -696,7 +707,7 @@ const CS_CONST = new RegExp(String.raw`^\s*((?:${CS_MODS}\s+)*)const\s+[\w.<>?]+
 
 function csharpSymbols(lines: Lines, out: Out): void {
   braceEngine(lines, (i, scope) => {
-    const code = lines.code[i]
+    const code = lines.match[i]
     const line = i + 1
     let m = CS_NAMESPACE.exec(code)
     if (m && scope.kind === 'top') {
@@ -744,7 +755,7 @@ const SW_LET = new RegExp(String.raw`^\s*((?:${SW_MODS}\s+)*)(let|var)\s+([A-Za-
 
 function swiftSymbols(lines: Lines, out: Out): void {
   braceEngine(lines, (i, scope) => {
-    const code = lines.code[i]
+    const code = lines.match[i]
     const line = i + 1
     const visible = (mods: string) => !/\b(?:private|fileprivate)\b/.test(mods)
     let m = SW_TYPE.exec(code)
@@ -791,7 +802,7 @@ const DART_TYPEDEF = /^\s*typedef\s+([A-Za-z_]\w*)/
 
 function dartSymbols(lines: Lines, out: Out): void {
   braceEngine(lines, (i, scope) => {
-    const code = lines.code[i]
+    const code = lines.match[i]
     const line = i + 1
     let m = DART_TYPE.exec(code)
     if (m && (m[3] || m[2].startsWith('extension'))) {
@@ -835,7 +846,7 @@ const PHP_NAMESPACE = /^\s*namespace\s+([\w\\]+)\s*(;|\{)?/
 
 function phpSymbols(lines: Lines, out: Out): void {
   braceEngine(lines, (i, scope) => {
-    const code = lines.code[i]
+    const code = lines.match[i]
     const line = i + 1
     let m = PHP_NAMESPACE.exec(code)
     if (m && scope.kind === 'top') {
@@ -867,6 +878,27 @@ const C_EXTERN_C = /^\s*extern\s+" *"\s*\{/
 const C_TYPE = /^\s*(?:template\s*<[^>]*>\s*)?(typedef\s+)?(class|struct|union|enum(?:\s+class|\s+struct)?)\s+(?:(?:__declspec\([^)]*\)|alignas\([^)]*\)|[A-Z_][A-Z0-9_]*_API|[A-Z_]+_EXPORT)\s+)*([A-Za-z_]\w*)?\s*(?:final\s*)?(?::[^;{]*)?\s*(\{.*|$)/
 const C_FUNC = /^\s*(?:template\s*<[^>]*>\s*)?((?:(?:static|inline|extern|virtual|constexpr|consteval|explicit|friend|unsigned|signed|long|short|const|volatile|struct|enum|__inline|__forceinline|[A-Z_][A-Z0-9_]*_API)\s+)*)([A-Za-z_][\w:<>,]*(?:\s*[*&]+\s*|\s+))+([A-Za-z_~][\w:~]*|operator\s*[^\s(]+)\s*\(/
 const C_FUNC_NAME_ONLY = /^([A-Za-z_]\w*)\s*\(/
+/** Real declarations have a handful of words before their "(": more than this and C_FUNC is not even tried. */
+const C_MAX_HEAD_WORDS = 24
+
+/**
+ * C_FUNC on a line, only when the line could be a declaration: it has a "(" with few words before it.
+ * Qualifiers (static, const …) can be read as part of the type or as qualifiers, so a line of hundreds of them
+ * makes C_FUNC try every split, which is slow; no real declaration looks like that.
+ */
+function cFunc(code: string): RegExpExecArray | null {
+  const open = code.indexOf('(')
+  if (open === -1) return null
+  let words = 0
+  let inWord = false
+  for (let k = 0; k < open; k++) {
+    const c = code.charCodeAt(k)
+    const w = (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95
+    if (w && !inWord && ++words > C_MAX_HEAD_WORDS) return null
+    inWord = w
+  }
+  return C_FUNC.exec(code)
+}
 const C_DEFINE = /^\s*#\s*define\s+([A-Za-z_]\w*)(\()?/
 const C_TYPEDEF = /^\s*typedef\s+[^;{]+?\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*;/
 const C_ACCESS = /^\s*(public|private|protected)\s*:/
@@ -896,7 +928,7 @@ function cSymbols(lines: Lines, out: Out, lang: string): void {
   braceEngine(
     lines,
     (i, scope): Decl | void => {
-      const code = lines.code[i]
+      const code = lines.match[i]
       const line = i + 1
       let m = C_DEFINE.exec(code)
       if (m) {
@@ -935,7 +967,7 @@ function cSymbols(lines: Lines, out: Out, lang: string): void {
           out.add(ctor[1], 'method', line, exported, signature(lines, i, 'brace'))
           return
         }
-        m = C_FUNC.exec(code)
+        m = cFunc(code)
         if (m && !C_NOT_TYPES.has(m[2].trim()) && !CONTROL.has(m[3])) {
           out.add(m[3], 'method', line, exported, signature(lines, i, 'brace'))
           return
@@ -956,7 +988,7 @@ function cSymbols(lines: Lines, out: Out, lang: string): void {
         return
       }
       if (scope.kind !== 'top') return
-      m = C_FUNC.exec(code)
+      m = cFunc(code)
       if (m && !C_NOT_TYPES.has(m[2].trim().split(/\s+/)[0] ?? '') && !CONTROL.has(m[3]) && hasBody(lines, i)) {
         const name = m[3]
         out.add(name, name.includes('::') ? 'method' : 'function', line, !/\bstatic\b/.test(m[1]), signature(lines, i, 'brace'))
@@ -964,15 +996,15 @@ function cSymbols(lines: Lines, out: Out, lang: string): void {
       }
       // GNU style: return type on the previous line, name at column 0.
       m = C_FUNC_NAME_ONLY.exec(code)
-      if (m && !CONTROL.has(m[1]) && i > 0 && /^[A-Za-z_][\w\s*]*$/.test(lines.code[i - 1].trim()) && hasBody(lines, i)) {
-        const prev = lines.code[i - 1].trim()
+      if (m && !CONTROL.has(m[1]) && i > 0 && /^[A-Za-z_][\w\s*]*$/.test(lines.match[i - 1].trim()) && hasBody(lines, i)) {
+        const prev = lines.match[i - 1].trim()
         if (prev && !/[;{}]$/.test(prev)) out.add(m[1], 'function', line, !/\bstatic\b/.test(prev), `${prev} ${signature(lines, i, 'brace')}`)
       }
     },
     (c, closeLine) => {
       // typedef struct { … } Name;
       if (c.flags.typedef && !c.name) {
-        const m = /^\s*\}\s*([A-Za-z_]\w*)\s*;/.exec(lines.code[closeLine] ?? '')
+        const m = /^\s*\}\s*([A-Za-z_]\w*)\s*;/.exec(lines.match[closeLine] ?? '')
         if (m) out.add(m[1], (c.flags.kind as SymbolKind) || 'struct', Number(c.flags.declLine) || closeLine + 1, true, `typedef ${String(c.flags.kind)} ${m[1]}`)
       }
     },
@@ -988,7 +1020,7 @@ function rubySymbols(lines: Lines, out: Out): void {
   lines.code.forEach((line, i) => {
     if (!/\S/.test(line)) return
     const indent = line.length - line.trimStart().length
-    const t = line.trim()
+    const t = lines.match[i].trim()
     while (stack.length && /^end\b/.test(t) && indent <= stack[stack.length - 1].indent) {
       if (indent === stack[stack.length - 1].indent) {
         stack.pop()
@@ -1026,7 +1058,7 @@ function rubySymbols(lines: Lines, out: Out): void {
 }
 
 function elixirSymbols(lines: Lines, out: Out): void {
-  lines.code.forEach((line, i) => {
+  lines.match.forEach((line, i) => {
     let m = /^\s*defmodule\s+([A-Z][\w.]*)\s+do\b/.exec(line)
     if (m) return out.add(m[1], 'module', i + 1, true, `defmodule ${m[1]}`)
     m = /^\s*(def|defp|defmacro|defmacrop|defguard|defguardp|defdelegate)\s+([a-z_][\w]*[?!]?)/.exec(line)
@@ -1041,7 +1073,7 @@ function elixirSymbols(lines: Lines, out: Out): void {
 }
 
 function luaSymbols(lines: Lines, out: Out): void {
-  lines.code.forEach((line, i) => {
+  lines.match.forEach((line, i) => {
     let m = /^\s*(local\s+)?function\s+([A-Za-z_][\w.:]*)\s*\(/.exec(line)
     if (m) return out.add(m[2], m[2].includes(':') ? 'method' : 'function', i + 1, !m[1], signature(lines, i, 'none'))
     m = /^\s*(local\s+)?([A-Za-z_][\w.:]*)\s*=\s*function\s*\(/.exec(line)
@@ -1050,14 +1082,14 @@ function luaSymbols(lines: Lines, out: Out): void {
 }
 
 function shellSymbols(lines: Lines, out: Out): void {
-  lines.code.forEach((line, i) => {
+  lines.match.forEach((line, i) => {
     const m = /^\s*(?:function\s+([A-Za-z_][\w:.-]*)\s*(?:\(\s*\))?|([A-Za-z_][\w:.-]*)\s*\(\s*\))\s*\{?/.exec(line)
     if (m && (m[1] || m[2])) out.add((m[1] ?? m[2]) as string, 'function', i + 1, true, signature(lines, i, 'brace'))
   })
 }
 
 function rSymbols(lines: Lines, out: Out): void {
-  lines.code.forEach((line, i) => {
+  lines.match.forEach((line, i) => {
     const m = /^([A-Za-z.][\w.]*)\s*(?:<-|=)\s*function\s*\(/.exec(line)
     if (m) out.add(m[1], 'function', i + 1, !m[1].startsWith('.'), signature(lines, i, 'brace'))
   })
@@ -1172,11 +1204,6 @@ const OTHER_RULES: Record<string, LineRule[]> = {
     [/^\s*enum\s+([A-Za-z_]\w*)/, 'enum', name1],
     [/^\s*rpc\s+([A-Za-z_]\w*)/, 'method', name1],
   ],
-  prisma: [
-    [/^\s*model\s+([A-Za-z_]\w*)/, 'struct', name1],
-    [/^\s*enum\s+([A-Za-z_]\w*)/, 'enum', name1],
-    [/^\s*type\s+([A-Za-z_]\w*)/, 'type', name1],
-  ],
   vyper: [
     [/^\s*def\s+([A-Za-z_]\w*)/, 'function', name1],
     [/^\s*(?:struct|event)\s+([A-Za-z_]\w*)/, 'struct', name1],
@@ -1184,13 +1211,32 @@ const OTHER_RULES: Record<string, LineRule[]> = {
 }
 
 function lineRules(lines: Lines, out: Out, rules: LineRule[], cut: Cut = 'none'): void {
-  lines.code.forEach((line, i) => {
+  lines.match.forEach((line, i) => {
     for (const [re, kind, pick] of rules) {
       const m = re.exec(line)
       if (!m) continue
       const r = pick(m)
       if (r?.name) out.add(r.name, kind, i + 1, r.exported ?? true, signature(lines, i, cut))
       break
+    }
+  })
+}
+
+/**
+ * Prisma schema: only top-level blocks — `model User {`, `view X {`, `enum Role {`, `type Address {`.
+ * Inside a block every line is a field, and fields are often called `type` or `model` (NextAuth's Account model has
+ * `type String`), so those must never be read as declarations.
+ */
+function prismaSymbols(lines: Lines, out: Out): void {
+  let depth = 0
+  lines.match.forEach((line, i) => {
+    if (depth === 0) {
+      const m = /^[ \t]*(model|view|enum|type)[ \t]+([A-Za-z_]\w*)[ \t]*\{/.exec(line)
+      if (m) out.add(m[2], m[1] === 'enum' ? 'enum' : m[1] === 'type' ? 'type' : 'struct', i + 1, true, signature(lines, i, 'brace'))
+    }
+    for (const ch of line) {
+      if (ch === '{') depth++
+      else if (ch === '}') depth = Math.max(0, depth - 1)
     }
   })
 }
@@ -1320,6 +1366,10 @@ export function extractSymbols(path: string, content: string, language: string):
       default: {
         if (lang === 'hcl') {
           hclSymbols(toLines(content, lang), out)
+          break
+        }
+        if (lang === 'prisma') {
+          prismaSymbols(toLines(content, lang), out)
           break
         }
         if (lang === 'coffeescript') {

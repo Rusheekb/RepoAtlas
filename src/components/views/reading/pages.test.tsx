@@ -252,8 +252,11 @@ describe('AskPage', () => {
     await user.click(screen.getByRole('button', { name: /Click again to clear/ }))
     expect(mocks.chat.clear).toHaveBeenCalled()
 
+    // While Claude is still answering, a file link opens the Explain panel instead of leaving the page,
+    // so the answer being written isn't cancelled.
     await user.click(screen.getByRole('button', { name: 'src/main.tsx' }))
-    expect(location()).toBe('/gh/acme/shop/explore?file=src%2Fmain.tsx')
+    expect(useExplain.getState().target).toEqual({ type: 'file', path: 'src/main.tsx' })
+    expect(location()).toBe('/gh/acme/shop/ask')
   })
 
   it('points a bad key at Settings', async () => {

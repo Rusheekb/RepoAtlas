@@ -64,7 +64,8 @@ export class JvmResolver {
         if (stem) push(byFqn, pkg ? `${pkg}.${stem}` : stem, p)
         // Top-level declarations (Kotlin/Scala files can hold many; Java files can hold extra package-private types).
         for (const m of code.matchAll(
-          /^(?:(?:public|private|internal|protected|open|abstract|sealed|data|final|inline|value|annotation|enum|case|static|expect|actual)\s+)*(?:class|interface|object|enum|record|trait|typealias|fun|val|var|def)\s+(?:<[^>]*>\s*)?(?:[\w.]+\.)?([A-Za-z_]\w*)/gm,
+          // [ \t] rather than \s: a declaration sits on one line, and \s+ across lines lets a file of "public" lines backtrack.
+          /^(?:(?:public|private|internal|protected|open|abstract|sealed|data|final|inline|value|annotation|enum|case|static|expect|actual)[ \t]+)*(?:class|interface|object|enum|record|trait|typealias|fun|val|var|def)[ \t]+(?:<[^>\n]*>[ \t]*)?(?:[\w.]+\.)?([A-Za-z_]\w*)/gm,
         )) {
           push(byFqn, pkg ? `${pkg}.${m[1]}` : m[1], p)
         }

@@ -22,6 +22,7 @@ export {
 export {
   loadRepoSnapshot,
   clearSnapshotCache,
+  forgetPrivateData,
   listCachedSnapshots,
   removeCachedSnapshot,
   snapshotCacheKey,

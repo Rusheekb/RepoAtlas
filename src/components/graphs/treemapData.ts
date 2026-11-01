@@ -3,7 +3,7 @@
  * folder, deeper folders folded into single "aggregate" tiles) and lays it out with d3-hierarchy's squarified treemap.
  */
 import { hierarchy, treemap, treemapSquarify } from 'd3-hierarchy'
-import { LAYERS, type AnalyzedFile, type Layer } from '@/core/types'
+import { LAYERS, type AnalyzedFile, type FileKind, type Layer } from '@/core/types'
 
 export type TreemapKind = 'root' | 'folder' | 'aggregate' | 'file'
 
@@ -18,6 +18,10 @@ export interface TreemapDatum {
   /** Lines across downloaded files. */
   lines: number
   bytes: number
+  /** Total tile weight (the area it gets). */
+  weight?: number
+  /** The part of `weight` that isn't a real line count (size estimates for files we didn't read, images …). */
+  estimated?: number
   /** The file's layer, or the dominant layer by size for folders. */
   layer: Layer
   /** The file's language, or the dominant language by size for folders (null = not code). */
@@ -28,9 +32,26 @@ export interface TreemapDatum {
 
 export type SizeBy = 'lines' | 'bytes'
 
-/** Tile weight: lines of code (bytes/40 for files we didn't download) or raw bytes. Never zero. */
-export function fileWeight(file: Pick<AnalyzedFile, 'lines' | 'size'>, sizeBy: SizeBy): number {
-  const v = sizeBy === 'bytes' ? file.size : file.lines != null && file.lines > 0 ? file.lines : file.size / 40
+/** Images, fonts and machine-made files (lock files …): not code anyone wrote, so they get only a small tile. */
+const NOT_CODE_KINDS: ReadonlySet<FileKind> = new Set<FileKind>(['asset', 'generated'])
+/** The most a not-code file weighs, in "lines". */
+export const NOT_CODE_MAX_WEIGHT = 25
+
+/** Whether a file's tile size by lines is an estimate rather than its real line count. */
+export function isEstimatedWeight(file: Pick<AnalyzedFile, 'lines' | 'size'> & { kind?: FileKind }): boolean {
+  return (file.kind != null && NOT_CODE_KINDS.has(file.kind)) || !(file.lines != null && file.lines > 0)
+}
+
+/**
+ * Tile weight. By lines: the file's lines of code (bytes/40 for source files we didn't download); images and
+ * machine-made files get a small fixed-ish weight, so "bigger rectangles hold more code" stays true. By bytes: raw
+ * size. Never zero.
+ */
+export function fileWeight(file: Pick<AnalyzedFile, 'lines' | 'size'> & { kind?: FileKind }, sizeBy: SizeBy): number {
+  let v: number
+  if (sizeBy === 'bytes') v = file.size
+  else if (file.kind != null && NOT_CODE_KINDS.has(file.kind)) v = Math.min(file.size / 400, NOT_CODE_MAX_WEIGHT)
+  else v = file.lines != null && file.lines > 0 ? file.lines : file.size / 40
   return Number.isFinite(v) && v > 1 ? v : 1
 }
 
@@ -47,17 +68,19 @@ interface Builder {
 
 function newBuilder(key: string, name: string, kind: TreemapKind): Builder {
   return {
-    datum: { key, name, kind, value: 0, fileCount: 0, lines: 0, bytes: 0, layer: 'other', language: null },
+    datum: { key, name, kind, value: 0, fileCount: 0, lines: 0, bytes: 0, weight: 0, estimated: 0, layer: 'other', language: null },
     layerWeights: new Map(),
     languageWeights: new Map(),
     childMap: kind === 'file' || kind === 'aggregate' ? undefined : new Map(),
   }
 }
 
-function account(b: Builder, file: AnalyzedFile, weight: number) {
+function account(b: Builder, file: AnalyzedFile, weight: number, estimated: boolean) {
   b.datum.fileCount += 1
   b.datum.lines += file.lines ?? 0
   b.datum.bytes += file.size
+  b.datum.weight = (b.datum.weight ?? 0) + weight
+  if (estimated) b.datum.estimated = (b.datum.estimated ?? 0) + weight
   b.layerWeights.set(file.layer, (b.layerWeights.get(file.layer) ?? 0) + weight)
   const lang = file.language ?? ''
   b.languageWeights.set(lang, (b.languageWeights.get(lang) ?? 0) + weight)
@@ -122,7 +145,8 @@ export function buildTreemapTree(
     if (!rel) continue
     const segs = rel.split('/')
     const weight = fileWeight(file, sizeBy)
-    account(rootB, file, weight)
+    const estimated = sizeBy === 'lines' && isEstimatedWeight(file)
+    account(rootB, file, weight, estimated)
     let parent = rootB
     let key = root
     // Walk expanded folders (depth < depthLimit).
@@ -133,7 +157,7 @@ export function buildTreemapTree(
       const map = parent.childMap as Map<string, Builder>
       let child = map.get(`d:${segs[i]}`)
       if (!child) map.set(`d:${segs[i]}`, (child = newBuilder(key, segs[i], 'folder')))
-      account(child, file, weight)
+      account(child, file, weight, estimated)
       parent = child
     }
     const map = parent.childMap as Map<string, Builder>
@@ -143,6 +167,8 @@ export function buildTreemapTree(
       leaf.datum.fileCount = 1
       leaf.datum.lines = file.lines ?? 0
       leaf.datum.bytes = file.size
+      leaf.datum.weight = weight
+      leaf.datum.estimated = estimated ? weight : 0
       leaf.datum.layer = file.layer
       leaf.datum.language = file.language
       leaf.datum.file = file
@@ -152,7 +178,7 @@ export function buildTreemapTree(
       const aggKey = key ? `${key}/${seg}` : seg
       let agg = map.get(`d:${seg}`)
       if (!agg) map.set(`d:${seg}`, (agg = newBuilder(aggKey, seg, 'aggregate')))
-      account(agg, file, weight)
+      account(agg, file, weight, estimated)
       agg.datum.value += weight
     }
   }
@@ -230,6 +256,31 @@ export function focusOrder(layout: TreemapLayout): TreemapRect[] {
   }
   visit('')
   return out
+}
+
+/** Above this share of a tile's area coming from estimates, its size is given as a file count, not lines. */
+const ESTIMATE_SHARE = 0.15
+
+/** Whether a tile's counted lines describe (almost) all of its area. */
+export function linesMatchArea(d: Pick<TreemapDatum, 'lines' | 'weight' | 'estimated'>): boolean {
+  const weight = d.weight ?? 0
+  const share = weight > 0 ? (d.estimated ?? 0) / weight : 0
+  return d.lines > 0 && share <= ESTIMATE_SHARE
+}
+
+/**
+ * The size written on a tile, in words that match its area: "1,204 lines" when (almost) all of it is real code
+ * we counted, otherwise the file count for folders ("407 files") or the size on disk for a single file ("12 KB").
+ */
+export function tileSizeText(
+  d: Pick<TreemapDatum, 'kind' | 'lines' | 'bytes' | 'fileCount' | 'weight' | 'estimated'>,
+  sizeBy: SizeBy,
+  fmt: { compact: (n: number) => string; bytes: (n: number) => string },
+): string {
+  if (sizeBy === 'bytes') return fmt.bytes(d.bytes)
+  if (linesMatchArea(d)) return `${fmt.compact(d.lines)} ${d.lines === 1 ? 'line' : 'lines'}`
+  if (d.kind !== 'file') return `${fmt.compact(d.fileCount)} ${d.fileCount === 1 ? 'file' : 'files'}`
+  return d.lines > 0 ? `${fmt.compact(d.lines)} ${d.lines === 1 ? 'line' : 'lines'}` : fmt.bytes(d.bytes)
 }
 
 /** Truncate a label to fit `maxWidth` px at roughly `charWidth` px per character; null when even 3 chars won't fit. */

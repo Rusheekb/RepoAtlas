@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { createHashRouter, Navigate, RouterProvider } from 'react-router'
 import HomePage from '@/pages/HomePage'
 import { applyTheme, useSettings } from '@/state/settings'
-import { Spinner } from '@/components/ui'
+import { Spinner } from '@/components/ui/Spinner'
 
 const RepoLayout = lazy(() => import('@/pages/RepoLayout'))
 const OverviewPage = lazy(() => import('@/pages/OverviewPage'))

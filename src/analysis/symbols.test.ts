@@ -658,6 +658,42 @@ describe('other languages', () => {
     ])
   })
 
+  it('Prisma: only top-level blocks, never fields called type or model (NextAuth Account)', () => {
+    const schema = [
+      'model Account {', // 1
+      '  id                String  @id @default(cuid())', // 2
+      '  userId            String', // 3
+      '  type              String', // 4
+      '  model             String?', // 5
+      '  provider          String', // 6
+      '}', // 7
+      '', // 8
+      'enum Role {', // 9
+      '  ADMIN', // 10
+      '}', // 11
+      'type Address {', // 12
+      '  street String', // 13
+      '}', // 14
+      'view UserInfo {', // 15
+      '  id Int @unique', // 16
+      '}', // 17
+    ].join('\n')
+    expect(brief(extractSymbols('prisma/schema.prisma', schema, 'Prisma'))).toEqual([
+      'struct:Account@1+',
+      'enum:Role@9+',
+      'type:Address@12+',
+      'struct:UserInfo@15+',
+    ])
+  })
+
+  it('reads declarations the same way however much blank space sits inside them', () => {
+    const spaced = `export   async    function     ${' '.repeat(300)}load  (id: string) {}\nclass    Box${' '.repeat(500)}{}\n`
+    expect(brief(extractSymbols('a.ts', spaced, 'TypeScript'))).toEqual(['function:load@1+', 'class:Box@2'])
+    // Python indentation still decides what is a method.
+    const py = 'class A:\n        def m(self):\n                def inner(): pass\n'
+    expect(brief(extractSymbols('a.py', py, 'Python'))).toEqual(['class:A@1+', 'method:m@2+'])
+  })
+
   it('returns [] for prose, data and empty input; caps at 200', () => {
     expect(extractSymbols('README.md', '# Title\nfunction x() {}', 'Markdown')).toEqual([])
     expect(extractSymbols('a.json', '{"a": 1}', 'JSON')).toEqual([])

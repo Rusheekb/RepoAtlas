@@ -12,7 +12,7 @@ import { useExplain } from '@/state/explain'
 import { bestFitDirection, moduleNeighborhood } from './architecture'
 import { makeCodeRefResolver } from './codeRefs'
 import { StepCode } from './StepCode'
-import { pickNextTour, resumeStepIndex, stepModuleId, tourKey, tourStepKey } from './tours'
+import { keyBelongsToSomethingElse, pickNextTour, resumeStepIndex, stepModuleId, tourKey, tourStepKey } from './tours'
 import { useMarkSeen, useRepoSeen } from './useSeen'
 
 export interface TourPlayerProps {
@@ -31,15 +31,6 @@ export interface TourPlayerProps {
 
 /** Approximate size of the "Where this happens" map (used to pick the arrow direction that reads best). */
 const MINI_MAP_BOX = { width: 360, height: 400 }
-
-/** Arrow keys shouldn't turn pages while the reader is typing, using a menu, or moving around a map. */
-function keyBelongsToSomethingElse(e: KeyboardEvent): boolean {
-  if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return true
-  const t = e.target
-  if (!(t instanceof HTMLElement)) return false
-  if (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return true
-  return Boolean(t.closest('.react-flow, [role="radiogroup"], [role="dialog"], dialog, [role="slider"], [role="tablist"], [role="listbox"], [role="menu"]'))
-}
 
 /** Where the nearest scrolling ancestor starts on screen (0 when the page itself scrolls). */
 function scrollAreaTop(el: HTMLElement): number {
@@ -288,6 +279,8 @@ export function TourPlayer({ analysis, tour, tours, stepIndex, onStepChange, lis
                     }}
                     showLegend={false}
                     showMiniMap={false}
+                    showControls={false}
+                    fitPadding={16}
                   />
                 </div>
                 {moduleId && (

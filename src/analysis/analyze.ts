@@ -18,7 +18,7 @@ import type {
 import { ROOT_MODULE_ID } from '@/core/types'
 import { ancestors, basename, depthOf, dirname, extname } from '@/core/paths'
 import { formatNumber } from '@/core/format'
-import { detectTechStack, findRelevantTerms, lookupPackage, parseManifests, type Ecosystem, type ManifestInfo } from '@/knowledge'
+import { detectTechStack, docsSiteRoots, findRelevantTerms, lookupPackage, parseManifests, type Ecosystem, type ImportedPackage, type ManifestInfo } from '@/knowledge'
 import { detectLanguage, type LanguageDef } from './languages'
 import { extractImports } from './imports'
 import { createResolver, type ResolvedImport, type Resolver } from './resolve'
@@ -28,12 +28,13 @@ import { classifyFile } from './classify'
 import { buildModuleEdges, buildModules } from './modules'
 import { findEntryPoints, findHubs, type EntryPoint } from './graph'
 import { detectProjectKind } from './projectKind'
-import { summarizeFile, writeOverview } from './summaries'
+import { projectDisplayName, summarizeFile, writeOverview } from './summaries'
 import { buildLearningPath } from './learningPath'
 import { buildStarterConcepts, buildStarterTours } from './starter'
 import { ecosystemOf, familyOf } from './structure/family'
-import { zonesOf } from './structure/zones'
+import { isPeripheral, isTestFileName, isWrapperScript, zonesOf } from './structure/zones'
 import { clearSignalCache } from './structure/signals'
+import { addSamePackageImports } from './structure/samePackage'
 import { dict } from '@/core/dict'
 
 /** Let the browser paint (progress messages, spinners) between heavy phases. */
@@ -82,10 +83,13 @@ function countLines(text: string): number {
   return text.endsWith('\n') ? n : n + 1
 }
 
-/** Language bytes are counted for real code only — not vendored copies, build output or minified bundles. */
+/**
+ * Language bytes are counted for real code only — not vendored copies, build output, minified bundles or the build-tool
+ * launcher scripts projects copy in unchanged (mvnw, gradlew …).
+ */
 function countsForLanguages(path: string): boolean {
   const zones = zonesOf(path)
-  if (zones.includes('vendor') || zones.includes('generated')) return false
+  if (zones.includes('vendor') || zones.includes('generated') || isWrapperScript(path)) return false
   return !/\.min\.(js|css|mjs)$|\.(js|css)\.map$|\.bundle\.js$/i.test(path)
 }
 
@@ -109,8 +113,19 @@ function languageStats(entries: TreeEntry[], langOf: Map<string, LanguageDef | n
     .sort((a, b) => b.bytes - a.bytes || b.files - a.files || a.name.localeCompare(b.name))
 }
 
-function pickReadme(paths: string[], contents: Record<string, string>): { path: string; content: string } | null {
-  const candidates = paths.filter((p) => /^readme(\.[a-z0-9]+)?$/i.test(basename(p)) && typeof contents[p] === 'string')
+/**
+ * The project's welcome note: the top-level README, else one in the docs or .github folder or in the main code
+ * (src/README.md). A README inside an example, a test fixture or a vendored copy describes something else, so
+ * it's never used as "the authors' own words" about the project.
+ */
+export function pickReadme(paths: string[], contents: Record<string, string>): { path: string; content: string } | null {
+  const candidates = paths.filter((p) => {
+    if (!/^readme(\.[a-z0-9]+)?$/i.test(basename(p)) || typeof contents[p] !== 'string') return false
+    if (depthOf(p) === 0) return true
+    const zones = zonesOf(p)
+    if (zones.some((z) => z === 'example' || z === 'test' || z === 'vendor' || z === 'generated')) return false
+    return depthOf(p) <= 1
+  })
   if (candidates.length === 0) return null
   const extRank = (p: string) => {
     const ext = extname(p)
@@ -124,13 +139,17 @@ function pickReadme(paths: string[], contents: Record<string, string>): { path: 
 interface Parsed {
   imports: string[]
   externalImports: string[]
+  /** For each outside package, the import paths that pointed at it ("go.mongodb.org/mongo-driver/v2/bson"). */
+  externalSpecifiers: Map<string, string[]>
   unresolvedImports: string[]
   symbols: CodeSymbol[]
   routes: RouteInfo[]
 }
 
-const EMPTY_PARSE: Parsed = { imports: [], externalImports: [], unresolvedImports: [], symbols: [], routes: [] }
+const EMPTY_PARSE: Parsed = { imports: [], externalImports: [], externalSpecifiers: new Map(), unresolvedImports: [], symbols: [], routes: [] }
 const MAX_UNRESOLVED_PER_FILE = 50
+/** Import paths remembered per outside package (enough to tell "only its bson sub-package" from real use). */
+const MAX_SPECIFIERS = 20
 /** Very large files are listed but not parsed (they're almost always data or generated code). */
 const MAX_PARSE_CHARS = 1_500_000
 
@@ -141,6 +160,7 @@ function parseFile(path: string, content: string, lang: LanguageDef, resolve: Re
   const routes = safe<RouteInfo[]>('extractRoutes', () => extractRoutes(path, content, lang.name), [])
   const imports = new Set<string>()
   const external = new Set<string>()
+  const specifiers = new Map<string, string[]>()
   const unresolved = new Set<string>()
   for (const imp of Array.isArray(raw) ? raw : []) {
     if (!imp || typeof imp.specifier !== 'string') continue
@@ -158,7 +178,12 @@ function parseFile(path: string, content: string, lang: LanguageDef, resolve: Re
         break
       }
       case 'external':
-        if (res.packageName) external.add(res.packageName)
+        if (res.packageName) {
+          external.add(res.packageName)
+          const list = specifiers.get(res.packageName) ?? []
+          if (list.length < MAX_SPECIFIERS && !list.includes(imp.specifier)) list.push(imp.specifier)
+          specifiers.set(res.packageName, list)
+        }
         break
       case 'builtin':
         break
@@ -169,6 +194,7 @@ function parseFile(path: string, content: string, lang: LanguageDef, resolve: Re
   return {
     imports: [...imports],
     externalImports: [...external],
+    externalSpecifiers: specifiers,
     unresolvedImports: [...unresolved],
     symbols: Array.isArray(symbols) ? symbols.filter((s) => s && typeof s.name === 'string') : [],
     routes: Array.isArray(routes) ? routes.filter((r) => r && typeof r.path === 'string') : [],
@@ -226,7 +252,11 @@ async function analyze(snapshot: RepoSnapshot): Promise<RepoAnalysis> {
     () => ({ type: 'unresolved' }),
   )
   const parsed = new Map<string, Parsed>()
-  const packageFiles = new Map<string, { count: number; ecosystem: Ecosystem | null }>()
+  const packageFiles = new Map<string, { count: number; coreCount: number; ecosystem: Ecosystem | null; specifiers: Set<string> }>()
+  // The project's own running code — not tests, examples, docs (or the docs website) or vendored copies.
+  const siteRoots = safe<ReadonlySet<string>>('docsSiteRoots', () => docsSiteRoots(paths), new Set<string>())
+  const inSite = (p: string) => siteRoots.size > 0 && p.includes('/') && siteRoots.has(p.slice(0, p.indexOf('/')))
+  const isCoreCode = (p: string) => !isPeripheral(p) && !isTestFileName(basename(p)) && !inSite(p)
   let sinceYield = 0
   for (const p of paths) {
     const content = contents[p]
@@ -235,10 +265,16 @@ async function analyze(snapshot: RepoSnapshot): Promise<RepoAnalysis> {
     const result = parseFile(p, content, lang, resolve, exists)
     parsed.set(p, result)
     const eco = ecosystemOf(familyOf(lang.name))
+    const core = isCoreCode(p)
     for (const pkg of result.externalImports) {
-      const cur = packageFiles.get(pkg)
-      if (cur) cur.count++
-      else packageFiles.set(pkg, { count: 1, ecosystem: eco })
+      let cur = packageFiles.get(pkg)
+      if (!cur) {
+        cur = { count: 0, coreCount: 0, ecosystem: eco, specifiers: new Set() }
+        packageFiles.set(pkg, cur)
+      }
+      cur.count++
+      if (core) cur.coreCount++
+      for (const spec of result.externalSpecifiers.get(pkg) ?? []) if (cur.specifiers.size < MAX_SPECIFIERS) cur.specifiers.add(spec)
     }
     if (++sinceYield >= 150) {
       sinceYield = 0
@@ -248,7 +284,9 @@ async function analyze(snapshot: RepoSnapshot): Promise<RepoAnalysis> {
   await tick()
 
   // 4. Technologies.
-  const importedPackages = [...packageFiles.entries()].map(([name, v]) => ({ name, count: v.count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+  const importedPackages: ImportedPackage[] = [...packageFiles.entries()]
+    .map(([name, v]) => ({ name, count: v.count, coreCount: v.coreCount, specifiers: [...v.specifiers] }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
   const techStack = safe<TechItem[]>('detectTechStack', () => detectTechStack({ paths, files: contents, manifests, languages, importedPackages }), [])
   const techIds = new Set(techStack.map((t) => t.id))
   await tick()
@@ -291,7 +329,8 @@ async function analyze(snapshot: RepoSnapshot): Promise<RepoAnalysis> {
   }
   await tick()
 
-  // 6. Who uses whom.
+  // 6. Who uses whom (including same-package use in Java/Kotlin, which needs no import line).
+  safe('addSamePackageImports', () => addSamePackageImports(files, contents), 0)
   const fileEdges: FileEdge[] = []
   for (const f of Object.values(files)) {
     for (const target of f.imports) {
@@ -322,7 +361,7 @@ async function analyze(snapshot: RepoSnapshot): Promise<RepoAnalysis> {
   // 8. Modules.
   const { modules: builtModules, assignments } = safe(
     'buildModules',
-    () => buildModules(fileList, { workspaces: manifests.workspaces, projectName: snapshot.meta?.repo }),
+    () => buildModules(fileList, { workspaces: manifests.workspaces, projectName: snapshot.meta?.repo, techIds }),
     { modules: [] as ModuleInfo[], assignments: {} as Record<string, string> },
   )
   const modules = ensureEveryFileHasAModule(builtModules, assignments, fileList)
@@ -433,10 +472,11 @@ async function analyze(snapshot: RepoSnapshot): Promise<RepoAnalysis> {
     warnings: buildWarnings(snapshot, stats, fileList),
     analyzedAt: Date.now(),
   }
-  const overview = safe('writeOverview', () => writeOverview(base), '')
-  const learningPath = safe('buildLearningPath', () => buildLearningPath({ ...base, overview }), [])
+  const displayName = projectDisplayName(snapshot.meta?.repo ?? '', manifests.projectNames)
+  const overview = safe('writeOverview', () => writeOverview(base, { name: displayName }), '')
+  const learningPath = safe('buildLearningPath', () => buildLearningPath({ ...base, overview }, { name: displayName }), [])
   await tick()
-  const starterConcepts = safe('buildStarterConcepts', () => buildStarterConcepts({ ...base, overview, learningPath }, contents), {
+  const starterConcepts = safe('buildStarterConcepts', () => buildStarterConcepts({ ...base, overview, learningPath }, contents, { name: displayName }), {
     concepts: [],
     relations: [],
     source: 'starter' as const,

@@ -13,7 +13,8 @@ import { useSettings } from '@/state/settings'
 import { useUi } from '@/state/ui'
 import GlossaryPage from './GlossaryPage'
 import OverviewPage from './OverviewPage'
-import RepoLayout, { viewFromPath } from './RepoLayout'
+import { Markdown } from '@/components/ui'
+import RepoLayout, { focusViewHeading, viewFromPath } from './RepoLayout'
 
 let analysis: RepoAnalysis
 const load = vi.fn()
@@ -99,7 +100,39 @@ describe('RepoLayout', () => {
     expect(within(screen.getByRole('navigation', { name: 'Views' })).getByRole('link', { name: /the big picture/i })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('main')).toBeInTheDocument()
     expect(useProgress.getState().recent[0]).toMatchObject({ fullName: 'acme/shop', description: 'A tiny online shop' })
-    expect(document.title).toBe('acme/shop · RepoAtlas')
+    expect(document.title).toBe('The Big Picture · acme/shop · RepoAtlas')
+  })
+
+  it('names each view in the tab title and moves focus to its heading when the reader switches views', async () => {
+    const { router } = renderRepo('/gh/acme/shop')
+    // The first view after loading leaves focus alone.
+    expect(document.activeElement).toBe(document.body)
+    expect(document.title).toBe('The Big Picture · acme/shop · RepoAtlas')
+    await act(() => router.navigate('/gh/acme/shop/glossary'))
+    expect(document.title).toBe('Glossary · acme/shop · RepoAtlas')
+    expect(screen.getByRole('heading', { level: 1, name: /glossary/i })).toHaveFocus()
+    // Only the query changed (same view): focus stays where the reader put it.
+    const search = screen.getByRole('searchbox')
+    search.focus()
+    await act(() => router.navigate('/gh/acme/shop/glossary?from=sidebar'))
+    expect(search).toHaveFocus()
+  })
+
+  it('lets Claude’s answers show pictures from this repository only', () => {
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/gh/:owner/:repo',
+          element: <RepoLayout />,
+          children: [{ index: true, element: <Markdown>{'![a](https://raw.githubusercontent.com/acme/shop/main/a.png) ![b](https://evil.example/b.png)'}</Markdown> }],
+        },
+      ],
+      { initialEntries: ['/gh/acme/shop'] },
+    )
+    render(<RouterProvider router={router} />)
+    const imgs = screen.getByRole('main').querySelectorAll('img')
+    expect([...imgs].map((i) => i.getAttribute('src'))).toEqual(['https://raw.githubusercontent.com/acme/shop/main/a.png'])
+    expect(screen.getByRole('link', { name: /picture: b \(on evil\.example\)/i })).toBeInTheDocument()
   })
 
   it('works out the view from the path', () => {
@@ -215,5 +248,53 @@ describe('README helpers', () => {
     expect(resolve('../CONTRIBUTING.md', 'link')).toBe('https://github.com/o/r/blob/abc/CONTRIBUTING.md')
     expect(resolve('javascript:alert(1)', 'link')).toBeNull()
     expect(resolve('https://example.com/x', 'link')).toBe('https://example.com/x')
+  })
+})
+
+describe('focusViewHeading', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('waits for a view that is still loading, then focuses its heading', async () => {
+    const main = document.createElement('main')
+    document.body.append(main)
+    const stop = focusViewHeading(main)
+    const h1 = document.createElement('h1')
+    h1.textContent = 'How It Connects'
+    main.append(h1)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(h1).toHaveFocus()
+    expect(h1).toHaveAttribute('tabindex', '-1')
+    stop()
+  })
+
+  it('leaves focus alone when it moved into a dialog (like the explain panel) meanwhile', async () => {
+    const main = document.createElement('main')
+    const panel = document.createElement('div')
+    panel.setAttribute('role', 'dialog')
+    const close = document.createElement('button')
+    panel.append(close)
+    document.body.append(main, panel)
+    close.focus()
+    focusViewHeading(main)
+    main.append(document.createElement('h1'))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(close).toHaveFocus()
+  })
+
+  it('gives up after a while', async () => {
+    vi.useFakeTimers()
+    const main = document.createElement('main')
+    document.body.append(main)
+    focusViewHeading(main, 100)
+    vi.advanceTimersByTime(150)
+    const h1 = document.createElement('h1')
+    h1.tabIndex = -1
+    main.append(h1)
+    await vi.runAllTimersAsync()
+    vi.useRealTimers()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(h1).not.toHaveFocus()
   })
 })

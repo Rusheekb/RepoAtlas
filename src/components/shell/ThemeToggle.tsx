@@ -1,7 +1,7 @@
 import { Moon, Sun } from 'lucide-react'
 import { IconButton } from './IconButton'
 import { useSettings } from '@/state/settings'
-import { useResolvedTheme } from './hooks'
+import { useResolvedTheme } from './media'
 
 /** Sun/moon button that flips between light and dark. ("Match my device" lives in Settings → Preferences.) */
 export function ThemeToggle({ className }: { className?: string }) {

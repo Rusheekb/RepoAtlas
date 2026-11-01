@@ -93,3 +93,32 @@ export function mergeTours(starter: readonly Tour[], ai: readonly Tour[] | null 
   for (const t of starter) if (t.steps.length) out.push(t)
   return out
 }
+
+/** Whether this element (or one around it, up to the page) scrolls sideways: arrow keys move its contents then. */
+function insideSidewaysScroller(el: HTMLElement): boolean {
+  for (let p: HTMLElement | null = el; p && p !== document.body; p = p.parentElement) {
+    if (p.scrollWidth > p.clientWidth + 1) {
+      const overflow = getComputedStyle(p).overflowX
+      if (overflow === 'auto' || overflow === 'scroll') return true
+    }
+  }
+  return false
+}
+
+/**
+ * Arrow keys shouldn't turn pages while the reader is typing, using a menu, moving around a map, or reading code
+ * (a code block or other focusable region scrolls sideways with ← / →).
+ */
+export function keyBelongsToSomethingElse(e: KeyboardEvent): boolean {
+  if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return true
+  const t = e.target
+  if (!(t instanceof HTMLElement)) return false
+  if (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return true
+  if (
+    t.closest(
+      '.react-flow, [role="radiogroup"], [role="dialog"], dialog, [role="slider"], [role="tablist"], [role="listbox"], [role="menu"], [role="tree"], [role="grid"], [role="region"], [data-testid="code-viewer"], pre',
+    )
+  )
+    return true
+  return insideSidewaysScroller(t)
+}

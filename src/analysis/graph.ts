@@ -1,10 +1,11 @@
 import type { AnalyzedFile } from '@/core/types'
 import type { ManifestInfo } from '@/knowledge'
 import { basename, depthOf, dirname } from '@/core/paths'
+import { formatNumber } from '@/core/format'
 import { familyOf } from './structure/family'
 import { detectStartIn, type StartKind } from './structure/signals'
 import { code, sentence } from './structure/text'
-import { zonesOf } from './structure/zones'
+import { isWrapperScript, zonesOf } from './structure/zones'
 
 export interface EntryPointOptions {
   /** Project names (repo name, package names) — files named after the project are often its front door. */
@@ -107,6 +108,8 @@ export function findEntryPoints(
 
   const eligible = (f: AnalyzedFile): boolean => {
     if (f.kind === 'test' || f.kind === 'generated' || f.kind === 'docs' || f.kind === 'asset') return false
+    // Build-tool launchers copied into the project (mvnw, gradlew) start the build, not the program.
+    if (isWrapperScript(f.path)) return false
     const zones = zonesOf(f.path)
     return !zones.includes('test') && !zones.includes('vendor') && !zones.includes('generated')
   }
@@ -144,6 +147,9 @@ export function findEntryPoints(
     add(f, 100, mapped === hint.path ? base : `${base} The finished program is built from this file.`)
   }
 
+  // A bare "#!/bin/sh" line only says a file can be run (installers, build helpers …): kept aside as a last resort.
+  const shebangOnly: AnalyzedFile[] = []
+
   // 2. What the code itself does, and 3. what the files are called.
   for (const f of files) {
     if (!eligible(f)) continue
@@ -156,7 +162,9 @@ export function findEntryPoints(
 
     if (content && codeFile) {
       const start = detectStartIn(content, family, f.language)
-      if (start) add(f, START_SCORES[start.kind], start.kind === 'main' ? mainReason(f, family) : START_REASONS[start.kind])
+      // Scripts in a bin/ folder are the project's commands even when only their first line says so.
+      if (start?.weak && !f.path.split('/').slice(0, -1).includes('bin')) shebangOnly.push(f)
+      else if (start) add(f, START_SCORES[start.kind], start.kind === 'main' ? mainReason(f, family) : START_REASONS[start.kind])
     }
     if (!codeFile && !(lower === 'index.html')) continue
 
@@ -187,6 +195,8 @@ export function findEntryPoints(
       add(f, GRAPH_SCORE_BASE + Math.min(f.imports.length, 10), `Nothing else uses this file, but it pulls in ${f.imports.length} others — a sign that things start here.`, true)
     }
   }
+
+  if (![...cands.values()].some((c) => !c.weak)) for (const f of shebangOnly) add(f, START_SCORES.cli, START_REASONS.cli)
 
   let ranked = [...cands.values()].sort((a, b) => b.score - a.score || depthOf(a.path) - depthOf(b.path) || a.path.localeCompare(b.path))
   const strong = ranked.filter((c) => c.score >= MIN_SCORE)
@@ -246,4 +256,35 @@ export function findHubs(files: AnalyzedFile[]): string[] {
   }
   const strict = rank(true)
   return strict.length > 0 ? strict : rank(false)
+}
+
+/** How many files use a file, and how many of those are automated tests. */
+export interface Reliance {
+  /** Every other file that uses it (the number shown everywhere as "used by N other files"). */
+  total: number
+  /** How many of those are tests. */
+  tests: number
+}
+
+/**
+ * One shared count for "used by N other files", so the overview, the learning path and the file cards always agree:
+ * every importer counts, and tests are reported separately for wording such as "17 other files (5 of them tests)".
+ */
+export function relianceOf(file: Pick<AnalyzedFile, 'importedBy'>, files: Record<string, Pick<AnalyzedFile, 'path' | 'kind' | 'layer'>>): Reliance {
+  const importers = [...new Set(file.importedBy)]
+  let tests = 0
+  for (const p of importers) {
+    const f = files[p]
+    if (f ? f.kind === 'test' || f.layer === 'test' : zonesOf(p).includes('test')) tests++
+  }
+  return { total: importers.length, tests }
+}
+
+/** "used by 17 other files (5 of them are tests)" / "used by 2 other files". */
+export function relianceText(r: Reliance): string {
+  if (r.total === 0) return ''
+  const base = `${r.total === 1 ? '1 other file' : `${formatNumber(r.total)} other files`}`
+  if (r.tests === 0) return base
+  if (r.tests === r.total) return `${base} (${r.total === 1 ? 'a test' : 'all of them tests'})`
+  return `${base} (${r.tests === 1 ? '1 of them is a test' : `${formatNumber(r.tests)} of them are tests`})`
 }

@@ -9,7 +9,14 @@ import { z } from 'zod'
  * The `.describe()` texts are sent to Claude as part of the JSON schema.
  */
 
-export const ConceptCategorySchema = z.enum(['data', 'feature', 'process', 'actor', 'technology', 'idea'])
+/** The concept categories RepoAtlas knows (validateConceptMap maps anything else onto one of them). */
+export const CONCEPT_CATEGORIES = ['data', 'feature', 'process', 'actor', 'technology', 'idea'] as const
+
+/**
+ * A plain string, not z.enum: the SDK sends a string enum to the API only as description text, so Claude isn't held
+ * to it — while a strict enum here would make the whole answer fail to parse over one "Technology" or "pattern".
+ */
+export const ConceptCategorySchema = z.string()
 
 export const ConceptMapSchema = z.object({
   concepts: z
@@ -19,7 +26,7 @@ export const ConceptMapSchema = z.object({
         name: z.string().describe('Short name, 1–4 words, e.g. "Shopping cart".'),
         emoji: z.string().describe('One emoji that represents the idea.'),
         category: ConceptCategorySchema.describe(
-          'data = a kind of information; feature = something users can do; process = a sequence of steps; actor = a person or system that does things; technology = a tool the project relies on; idea = a design principle or pattern.',
+          'Exactly one of: data, feature, process, actor, technology, idea. data = a kind of information; feature = something users can do; process = a sequence of steps; actor = a person or system that does things; technology = a tool the project relies on; idea = a design principle or pattern.',
         ),
         summary: z.string().describe('One plain-English sentence.'),
         explanation: z.string().describe('Markdown, 1–4 short paragraphs, plain English, specific to this project.'),

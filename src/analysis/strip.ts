@@ -442,7 +442,7 @@ class Scanner {
       }
       if (syn.swiftRaw && c === '#') {
         let h = i
-        while (s[h] === '#') h++
+        while (h < end && s[h] === '#') h++
         if (s[h] === '"') {
           const hashes = s.slice(i, h)
           const multi = s.startsWith('"""', h)
@@ -451,6 +451,10 @@ class Scanner {
           lastKind = 3
           continue
         }
+        // Not a raw string: step over the whole run of "#" at once (re-reading it from every "#" is quadratic).
+        lastKind = 2
+        i = h
+        continue
       }
       if (syn.rustChar && c === "'") {
         const m = /'(?:\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]{1,6}\}|.)|[^\\'\n])'/y
@@ -513,7 +517,9 @@ class Scanner {
           }
         }
         if (syn.cppRaw && next === '"' && /^(?:u8|[uUL])?R$/.test(word)) {
-          const open = s.indexOf('(', j + 1)
+          // The delimiter is at most 16 characters, so only look that far for its "(".
+          const near = s.slice(j + 1, j + 18).indexOf('(')
+          const open = near === -1 ? -1 : j + 1 + near
           const delim = open === -1 ? '' : s.slice(j + 1, open)
           if (open !== -1 && delim.length <= 16 && !/[\s\\)]/.test(delim)) {
             i = this.until(open + 1, end, ')' + delim + '"')
@@ -689,13 +695,21 @@ class Scanner {
     return end
   }
 
+  /** A regex literal that ran to the end of its line without closing: later "/" before this point are not retried. */
+  private noRegexBefore = -1
+
   private regexLiteral(i: number, end: number): number {
     const s = this.s
+    if (i < this.noRegexBefore) return i
     let j = i + 1
     let inClass = false
     while (j < end) {
       const c = s[j]
-      if (c === '\n') return i
+      if (c === '\n') {
+        // Retrying from every later "/" on this line would re-read it each time (quadratic on long lines).
+        this.noRegexBefore = j
+        return i
+      }
       if (c === '\\') {
         j += 2
         continue
@@ -706,7 +720,11 @@ class Scanner {
       else if (c === '/') break
       j++
     }
-    if (j >= end || j === i + 1) return i
+    if (j >= end) {
+      this.noRegexBefore = end
+      return i
+    }
+    if (j === i + 1) return i
     this.push(KIND_STRING, i + 1, j)
     j++
     while (j < end && /[a-z]/.test(s[j])) j++

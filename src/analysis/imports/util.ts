@@ -126,8 +126,9 @@ export function attrValue(attrs: string, name: string): string | null {
 
 /** Offset of an attribute's value within the whole file, given the block's tagStart. */
 export function attrOffset(s: string, tagStart: number, name: string): number {
-  const k = s.toLowerCase().indexOf(name.toLowerCase(), tagStart)
-  return k === -1 ? tagStart : k
+  // Only the tag itself is searched (lower-casing the whole file for every tag would be quadratic).
+  const k = s.slice(tagStart, tagStart + 4000).toLowerCase().indexOf(name.toLowerCase())
+  return k === -1 ? tagStart : tagStart + k
 }
 
 /** Absolute URLs, protocol-relative URLs, data URIs, anchors and template placeholders are not repo files. */
@@ -156,4 +157,35 @@ export function splitTopLevel(s: string, sep = ',', angles = false): string[] {
   }
   out.push(s.slice(last))
   return out
+}
+
+export interface TerminatedMatch {
+  /** The match of the statement's head. */
+  head: RegExpExecArray
+  /** Text between the end of the head and the terminator (exclusive). */
+  body: string
+  /** Offset of the body's first character. */
+  bodyStart: number
+}
+
+/**
+ * Statements that run from a head (a global regex) to the next `terminator` character, e.g. Rust `use … ;`
+ * or Go `import ( … )` — the linear version of `head([^;]+);`.
+ * That regex form re-scans to the end of the file from every head that has no terminator after it (quadratic on a
+ * file full of `use` lines without a ";"); here the terminator is looked up once per stretch of text instead.
+ */
+export function* untilTerminator(code: string, head: RegExp, terminator: string, maxBody = Infinity): Generator<TerminatedMatch> {
+  head.lastIndex = 0
+  let next = -2
+  let m: RegExpExecArray | null
+  while ((m = head.exec(code)) !== null) {
+    const bodyStart = m.index + m[0].length
+    if (m[0].length === 0) head.lastIndex++
+    if (next !== -1 && next < bodyStart) next = code.indexOf(terminator, bodyStart)
+    // No terminator anywhere after this head, so none after any later head either.
+    if (next === -1) return
+    if (next - bodyStart > maxBody) continue
+    yield { head: m, body: code.slice(bodyStart, next), bodyStart }
+    head.lastIndex = Math.max(head.lastIndex, next + terminator.length)
+  }
 }

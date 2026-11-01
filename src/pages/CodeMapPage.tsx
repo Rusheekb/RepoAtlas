@@ -13,7 +13,8 @@ import { useAnalysis } from '@/state/repo'
 
 type ColorBy = 'layer' | 'language'
 
-const HINT = 'Every rectangle is a file. Bigger rectangles hold more code. Click a folder to zoom in.'
+const HINT =
+  'Every rectangle is a file. Bigger rectangles hold more code; pictures and machine-made files (like lock files) get small ones. Click a folder to zoom in.'
 
 /**
  * "Where Code Lives": a zoomable treemap of every file, sized by lines of code and colored by kind of code or

@@ -6,6 +6,7 @@ import type { RepoAnalysis } from '@/core/types'
 import { useExplain } from '@/state/explain'
 import { useProgress } from '@/state/progress'
 import { useRepoStore } from '@/state/repo'
+import { Term } from './Glossary'
 import { ExplainPanel, progressKeyFor } from './ExplainPanel'
 
 // Keep the AI block inert: these tests are about the panel's own facts and navigation.
@@ -85,6 +86,47 @@ describe('ExplainPanel', () => {
     act(() => useExplain.getState().open({ type: 'module', id: 'src' }))
     await user.keyboard('{Escape}')
     expect(useExplain.getState().target).toBeNull()
+  })
+
+  it('gives focus back to the glossary word after “Learn more” and Escape (the popover is gone by then)', async () => {
+    const user = userEvent.setup()
+    renderAt(
+      <>
+        <p>
+          Runs in a <Term id="api">API</Term> world.
+        </p>
+        <ExplainPanel />
+      </>,
+      { path: '/gh/acme/shop', route: '/gh/:owner/:repo' },
+    )
+    const term = screen.getByRole('button', { name: 'API' })
+    await user.tab()
+    expect(term).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('button', { name: /learn more/i })).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(useExplain.getState().target).toEqual({ type: 'term', id: 'api' })
+    expect(screen.getByTestId('explain-panel')).toContainElement(document.activeElement as HTMLElement)
+    await user.keyboard('{Escape}')
+    expect(useExplain.getState().target).toBeNull()
+    expect(term).toHaveFocus()
+  })
+
+  it('falls back to the main content when what opened the panel is gone', async () => {
+    const user = userEvent.setup()
+    const main = document.createElement('main')
+    main.id = 'main-content'
+    main.tabIndex = -1
+    document.body.append(main)
+    const opener = document.createElement('button')
+    document.body.append(opener)
+    opener.focus()
+    renderPanel()
+    act(() => useExplain.getState().open({ type: 'module', id: 'src' }))
+    opener.remove()
+    await user.keyboard('{Escape}')
+    expect(main).toHaveFocus()
+    main.remove()
   })
 
   it('explains a file with its role, summary and code links', async () => {

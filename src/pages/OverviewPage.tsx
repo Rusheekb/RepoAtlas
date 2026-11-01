@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 import { AiAnswer } from '@/components/AiAnswer'
 import { GlossaryText } from '@/components/Glossary'
 import { LanguageBar, LayerBar, MiniLayerBar, TechStackDiagram } from '@/components/graphs'
+import { fileWeight } from '@/components/graphs/treemapData'
 import { Callout, GitHubMark, OutboundLink, PageSection, RichText, StatTile } from '@/components/shell/bits'
 import { useRepoNav } from '@/components/shell/hooks'
 import { markdownPreview } from '@/components/shell/text'
@@ -12,7 +13,7 @@ import { Button, Card, Markdown } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
 import { formatCompact, formatDate, formatNumber, pluralize } from '@/core/format'
 import { LAYER_INFO, PROJECT_KIND_INFO, ROLE_INFO, VIEW_INFO } from '@/core/labels'
-import type { Layer, LearningStep, ModuleInfo, RepoAnalysis } from '@/core/types'
+import type { AnalyzedFile, Layer, LearningStep, ModuleInfo, RepoAnalysis } from '@/core/types'
 import { githubFileUrl } from '@/github'
 import { useExplain } from '@/state/explain'
 import { useProgress } from '@/state/progress'
@@ -38,14 +39,13 @@ function useCodeLinks(analysis: RepoAnalysis) {
   return { isCodeLink, onCodeClick }
 }
 
-/** Sum every module's lines-per-layer. */
-function sumLayers(modules: ModuleInfo[]): Partial<Record<Layer, number>> {
+/**
+ * Amount of code per layer, weighted the same way as Where Code Lives: lines of code, with images, lockfiles and
+ * other non-code files capped so they can't outweigh the real code.
+ */
+function sumLayers(files: Record<string, AnalyzedFile>): Partial<Record<Layer, number>> {
   const out: Partial<Record<Layer, number>> = {}
-  for (const m of modules) {
-    for (const [layer, n] of Object.entries(m.layerBreakdown) as [Layer, number | undefined][]) {
-      if (n) out[layer] = (out[layer] ?? 0) + n
-    }
-  }
+  for (const f of Object.values(files)) out[f.layer] = (out[f.layer] ?? 0) + fileWeight(f, 'lines')
   return out
 }
 
@@ -75,7 +75,7 @@ function Hero({ analysis }: { analysis: RepoAnalysis }) {
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-brand-text">{kind.label || info.label}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight break-words text-ink">
+          <h1 tabIndex={-1} className="mt-1 text-3xl font-semibold tracking-tight break-words text-ink outline-none">
             <span className="font-normal text-ink-3">{meta.owner} / </span>
             {meta.repo}
           </h1>
@@ -432,7 +432,7 @@ function Readme({ analysis, open, onToggle }: { analysis: RepoAnalysis; open: bo
     <PageSection id="readme" emoji="📖" title="The welcome note" subtitle={<>What the authors wrote to introduce their project, from <code className="font-mono text-[13px]">{readme.path}</code>.</>}>
       <Card className="overflow-hidden">
         <div id={contentId} className="relative px-6 py-6 sm:px-8">
-          <Markdown resolveUrl={resolveUrl} isCodeLink={links.isCodeLink} onCodeClick={links.onCodeClick}>
+          <Markdown trusted resolveUrl={resolveUrl} isCodeLink={links.isCodeLink} onCodeClick={links.onCodeClick}>
             {text}
           </Markdown>
           {collapsible && !open && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-linear-to-t from-surface to-transparent" aria-hidden />}
@@ -496,7 +496,7 @@ export default function OverviewPage() {
   const markSeen = useProgress((s) => s.markSeen)
   const links = useCodeLinks(analysis)
   const [readmeOpen, setReadmeOpen] = useState(false)
-  const layers = useMemo(() => sumLayers(analysis.modules), [analysis.modules])
+  const layers = useMemo(() => sumLayers(analysis.files), [analysis.files])
 
   const scrollTo = (id: string) => {
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches

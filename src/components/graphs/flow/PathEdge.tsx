@@ -13,6 +13,8 @@ export type PathEdgeData = {
   label?: string
   /** Visually quieter edge (e.g. to a file outside the current part). */
   faint?: boolean
+  /** Only show the label while this edge is highlighted (its spot would cover a card). */
+  labelOnlyWhenActive?: boolean
 }
 
 export type PathFlowEdge = Edge<PathEdgeData, 'path'>
@@ -26,7 +28,7 @@ export const PathEdge = memo(function PathEdge({ id, source, target, data }: Edg
   if (!data?.path) return null
   const state = edgeState(h, id, source, target)
   const active = state === 'active'
-  const showLabel = !!data.label && edgeLabelVisible(h, id, state)
+  const showLabel = !!data.label && (data.labelOnlyWhenActive ? active : edgeLabelVisible(h, id, state))
   return (
     <>
       <g className="atlas-edge" data-state={state} style={{ opacity: state === 'dim' ? 0.14 : data.faint && !active ? 0.45 : 1 }}>
@@ -36,11 +38,13 @@ export const PathEdge = memo(function PathEdge({ id, source, target, data }: Edg
           markerEnd={`url(#${active ? h.markers.active : h.markers.normal})`}
           interactionWidth={22}
           style={{
-            stroke: active ? 'var(--brand)' : 'var(--line-strong)',
+            stroke: active ? 'var(--brand)' : 'var(--edge)',
             strokeWidth: active ? data.width + 0.5 : data.width,
             strokeLinecap: 'round',
             strokeLinejoin: 'round',
             fill: 'none',
+            // Lines keep their on-screen width at any zoom, so arrows stay visible on zoomed-out maps.
+            vectorEffect: 'non-scaling-stroke',
           }}
         />
       </g>
@@ -61,23 +65,37 @@ export const PathEdge = memo(function PathEdge({ id, source, target, data }: Edg
   )
 })
 
-/** Arrowhead definitions referenced by PathEdge (one gray, one brand). Rendered once per graph. */
-export function ArrowMarkers({ normal, active }: { normal: string; active: string }) {
+/** On-screen size (px) we aim for: arrowheads never shrink below ~9px, and don't balloon when zoomed in. */
+const ARROW_SCREEN_PX = 9
+
+/**
+ * Arrowhead size in flow units for a zoom level, and where its tip sits. Edge paths stop 5 units short of the
+ * card (room for the head), so the tip is placed 5 units past the path's end whatever the head's size.
+ */
+export function arrowGeometry(zoom: number): { size: number; refX: number } {
+  const z = Number.isFinite(zoom) && zoom > 0 ? zoom : 1
+  const size = Math.min(36, Math.max(10, ARROW_SCREEN_PX / z))
+  return { size: Math.round(size * 100) / 100, refX: Math.round((10 - (5 * 10) / size) * 100) / 100 }
+}
+
+/** Arrowhead definitions referenced by PathEdge (one plain, one brand). Rendered once per graph. */
+export function ArrowMarkers({ normal, active, zoom = 1 }: { normal: string; active: string; zoom?: number }) {
+  const { size, refX } = arrowGeometry(zoom)
   return (
     <svg width="0" height="0" className="absolute" aria-hidden focusable="false">
       <defs>
         {[
-          [normal, 'var(--line-strong)'],
+          [normal, 'var(--edge)'],
           [active, 'var(--brand)'],
         ].map(([id, color]) => (
           <marker
             key={id}
             id={id}
             viewBox="0 0 10 10"
-            refX="5"
+            refX={refX}
             refY="5"
-            markerWidth="10"
-            markerHeight="10"
+            markerWidth={size}
+            markerHeight={size}
             markerUnits="userSpaceOnUse"
             orient="auto-start-reverse"
           >

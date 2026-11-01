@@ -1,14 +1,14 @@
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { ArrowRight, Check, KeyRound, Lock, Sparkles, X } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
-import { useHasAiKey } from '@/ai'
 import { SettingsDialog } from '@/components/SettingsDialog'
 import { GitHubMark } from '@/components/shell/bits'
-import { useMediaQuery } from '@/components/shell/hooks'
+import { useHasClaudeKey, useMediaQuery } from '@/components/shell/media'
 import { LogoMark } from '@/components/shell/Logo'
+import { countsTowardsProgress } from '@/components/shell/progress'
 import { checkRepoInput, EXAMPLE_REPOS } from '@/components/shell/repoInput'
 import { PROJECT_URL, SiteHeader } from '@/components/shell/SiteHeader'
-import { Button } from '@/components/ui'
+import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 import { pluralize, timeAgo } from '@/core/format'
 import { VIEW_INFO, VIEW_ORDER } from '@/core/labels'
@@ -90,7 +90,7 @@ function RepoForm() {
           placeholder={narrow ? 'e.g. github.com/pallets/flask' : 'Paste a GitHub link, like github.com/pallets/flask'}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : hintId}
-          className="h-12 min-w-0 flex-1 bg-transparent px-1 text-base text-ink outline-none placeholder:text-ink-3 focus-visible:outline-none sm:text-[17px]"
+          className="h-12 min-w-0 flex-1 bg-transparent px-1 text-base text-ink placeholder:text-ink-3 focus-visible:outline-hidden sm:text-[17px]"
         />
         <Button type="submit" variant="primary" size="lg" className="h-12 px-4 sm:px-6" iconRight={<ArrowRight className="size-5" aria-hidden />}>
           <span className="max-sm:sr-only">Explore</span>
@@ -172,7 +172,7 @@ function RecentRepos() {
         {recent.map((r) => {
           const [owner, repo] = r.fullName.split('/')
           if (!owner || !repo) return null
-          const explored = Object.keys(seen[r.fullName.toLowerCase()] ?? {}).length
+          const explored = Object.keys(seen[r.fullName.toLowerCase()] ?? {}).filter(countsTowardsProgress).length
           return (
             <li key={r.fullName} className="group flex items-center gap-2 pr-2">
               <Link to={repoPath({ owner, repo })} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2">
@@ -280,7 +280,7 @@ function ViewShowcase() {
 
 function TrustAndAi() {
   const openSettings = useUi((s) => s.openSettings)
-  const hasKey = useHasAiKey()
+  const hasKey = useHasClaudeKey()
   return (
     <section className="mt-20 grid gap-4 lg:grid-cols-2" aria-label="Privacy and AI">
       <div className="rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-7">
@@ -308,7 +308,8 @@ function TrustAndAi() {
         <h2 className="mt-4 text-lg font-semibold text-ink">Optional: add your Claude API key</h2>
         <p className="mt-2 text-sm leading-relaxed text-ink-2">
           RepoAtlas works without AI. With your own key, Claude can read the code and explain any file in depth, answer your questions, draw
-          smarter idea maps and quiz you. You pay Anthropic directly, usually a few cents per answer.
+          smarter idea maps and quiz you. You pay Anthropic directly: about 40¢ for the first answer about a project, then roughly
+          5–10¢ for each follow-up within the hour.
         </p>
         <div className="mt-4">
           {hasKey ? (

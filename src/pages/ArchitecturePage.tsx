@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { ArrowRight, FolderOpen } from 'lucide-react'
-import { ArchitectureGraph } from '@/components/graphs'
+import { ArchitectureGraph, buildArchitectureLayout } from '@/components/graphs'
+import { useMeasuredElement } from '@/components/graphs/hooks'
 import { useIsDesktop, useRepoNav } from '@/components/shell/hooks'
 import { Button, EmptyState, LayerLegend, Segmented } from '@/components/ui'
-import { moduleRows, presentLayers } from '@/components/views/visual/architecture'
+import { bestFitDirection, moduleRows, presentLayers } from '@/components/views/visual/architecture'
 import { ModuleDrillDown } from '@/components/views/visual/ModuleDrillDown'
 import { ModuleTable } from '@/components/views/visual/ModuleTable'
 import { useMarkSeen, useSeenIds } from '@/components/views/visual/useSeen'
@@ -18,6 +19,9 @@ type Direction = 'LR' | 'TB'
 type Mode = 'map' | 'list'
 
 const HINT = 'Each box is one part of the project. An arrow from A to B means A uses something from B. Click a box to learn what it does.'
+
+/** The "See the files in …" button sits over the top of the map: keep that strip free of cards while it shows. */
+const SEE_FILES_RESERVE = { top: 26 }
 
 /** Copy the current search params, apply a patch (null / '' deletes a key). */
 function patchParams(prev: URLSearchParams, patch: Record<string, string | null>): URLSearchParams {
@@ -48,7 +52,15 @@ export default function ArchitecturePage() {
   const seenModuleSet = useMemo(() => new Set(seenModuleIds), [seenModuleIds])
 
   const [dirChoice, setDirChoice] = useState<Direction | null>(null)
-  const direction: Direction = dirChoice ?? (isDesktop ? 'LR' : 'TB')
+  // Until the reader picks one, arrows flow whichever way lets the map be drawn biggest in the space it has.
+  const [mapBoxRef, mapBox] = useMeasuredElement<HTMLDivElement>()
+  const boxW = Math.round(mapBox.width / 40) * 40
+  const boxH = Math.round(mapBox.height / 40) * 40
+  const autoDirection = useMemo<Direction>(() => {
+    if (boxW <= 0 || boxH <= 0) return isDesktop ? 'LR' : 'TB'
+    return bestFitDirection(analysis.modules, analysis.moduleEdges, { width: boxW, height: boxH }, buildArchitectureLayout)
+  }, [boxW, boxH, isDesktop, analysis.modules, analysis.moduleEdges])
+  const direction: Direction = dirChoice ?? autoDirection
 
   const moduleById = useMemo(() => new Map(analysis.modules.map((m) => [m.id, m])), [analysis.modules])
   const rows = useMemo(() => moduleRows(analysis.modules, analysis.moduleEdges), [analysis.modules, analysis.moduleEdges])
@@ -173,7 +185,7 @@ export default function ArchitecturePage() {
               />
               {mode === 'map' && directionToggle}
             </>
-          ) : (
+          ) : drill ? undefined : (
             directionToggle
           )
         }
@@ -186,7 +198,8 @@ export default function ArchitecturePage() {
             module={drill}
             files={analysis.files}
             fileEdges={analysis.fileEdges}
-            direction={direction}
+            direction={dirChoice}
+            onDirectionChange={setDirChoice}
             selectedPath={selectedFile}
             seenPaths={seenPaths}
             onBack={backToParts}
@@ -219,7 +232,7 @@ export default function ArchitecturePage() {
         </div>
       ) : (
         <section aria-label="Map of the project’s parts" className="flex min-h-[380px] flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
-          <div className="relative min-h-0 flex-1">
+          <div ref={mapBoxRef} className="relative min-h-[320px] flex-1">
             <ArchitectureGraph
               modules={analysis.modules}
               edges={analysis.moduleEdges}
@@ -229,6 +242,7 @@ export default function ArchitecturePage() {
               onOpen={drillInto}
               direction={direction}
               showLegend={false}
+              reserve={selected ? SEE_FILES_RESERVE : undefined}
             />
             {selected && (
               <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex justify-start">

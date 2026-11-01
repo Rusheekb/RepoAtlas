@@ -60,6 +60,17 @@ export interface ManifestInfo {
   descriptions: string[]
 }
 
+/**
+ * What a folder must contain before its conventional name can be trusted. A folder called "output" can be a
+ * program's hand-written output formatters, "charts" can be chart-drawing code, "scene" can be a drawing app's canvas.
+ *  - generated: mostly machine-made or non-code files (build output)
+ *  - helm-chart: a Chart.yaml or Kubernetes templates
+ *  - game: a game engine among the technologies, or game scene files
+ *  - desktop-shell: a desktop-app toolkit (Electron, Tauri …) among the technologies
+ *  - go-code: Go source files (Go's pkg/ convention)
+ */
+export type FolderEvidence = 'generated' | 'helm-chart' | 'game' | 'desktop-shell' | 'go-code'
+
 /** Conventional folder names and what they mean. */
 export interface FolderRole {
   /** Short role label, e.g. "Reusable screen pieces". */
@@ -68,4 +79,6 @@ export interface FolderRole {
   description: string
   emoji: string
   layer: Layer
+  /** Only use this label when the folder's contents back it up (see FolderEvidence). */
+  requires?: FolderEvidence
 }

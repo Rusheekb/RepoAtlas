@@ -1,5 +1,5 @@
 import { extractJs } from './js'
-import { groupText, matchAll, type ImportSink, type Source } from './util'
+import { groupText, matchAll, untilTerminator, type ImportSink, type Source } from './util'
 
 type Extractor = (src: Source, sink: ImportSink) => void
 
@@ -14,8 +14,20 @@ function each(src: Source, sink: ImportSink, re: RegExp, g: number, kind: string
 
 const zig: Extractor = (src, sink) => each(src, sink, /@import\s*\(\s*(")( *)"\s*\)/dg, 2, 'import')
 
-const solidity: Extractor = (src, sink) =>
-  each(src, sink, /^[ \t]*import\s+(?:[^'";]*?\bfrom\s+)?(['"])( *)\1/dgm, 2, 'import')
+/**
+ * Solidity: `import "x";`, `import "x" as y;`, `import {A, B} from "x";`, `import * as X from "x";` — the first quoted
+ * string of the statement. Read up to the ";" with untilTerminator, so files of unfinished imports stay fast.
+ */
+const solidity: Extractor = (src, sink) => {
+  for (const { head, body, bodyStart } of untilTerminator(src.code, /^[ \t]*import\s/gm, ';', 4000)) {
+    const q = /["']/.exec(body)
+    if (!q) continue
+    const close = body.indexOf(q[0], q.index + 1)
+    if (close === -1) continue
+    const spec = src.text.slice(bodyStart + q.index + 1, bodyStart + close).trim()
+    if (spec) sink.add(spec, head.index, 'import')
+  }
+}
 
 const proto: Extractor = (src, sink) =>
   each(src, sink, /^[ \t]*import\s+(?:public\s+|weak\s+)?(["'])( *)\1/dgm, 2, 'import')
@@ -38,7 +50,7 @@ const julia: Extractor = (src, sink) => {
   for (const m of matchAll(/^[ \t]*(?:using|import)\s+([^\n]+)/dgm, src.code)) {
     const list = m[1].split(':')[0] ?? ''
     for (const part of list.split(',')) {
-      const name = part.trim().split(/\s+as\s+/)[0]?.trim() ?? ''
+      const name = part.trim().split(/(?<!\s)\s+as\s+/)[0]?.trim() ?? ''
       if (/^\.*[A-Za-z_][\w.]*$/.test(name)) sink.add(name, m.index, 'using')
     }
   }
@@ -54,9 +66,9 @@ const crystal: Extractor = (src, sink) => each(src, sink, /(?<![\w.])require\s+(
 
 const nim: Extractor = (src, sink) => {
   for (const m of matchAll(/^[ \t]*(import|include|from)\s+([^\n]+)/dgm, src.code)) {
-    const body = m[1] === 'from' ? (m[2].split(/\s+import\s+/)[0] ?? '') : m[2].split(/\s+except\s+/)[0] ?? ''
+    const body = m[1] === 'from' ? (m[2].split(/(?<!\s)\s+import\s+/)[0] ?? '') : m[2].split(/(?<!\s)\s+except\s+/)[0] ?? ''
     for (const part of body.split(',')) {
-      const name = part.trim().split(/\s+as\s+/)[0]?.trim().replace(/["]/g, '') ?? ''
+      const name = part.trim().split(/(?<!\s)\s+as\s+/)[0]?.trim().replace(/["]/g, '') ?? ''
       if (/^[\w./]+$/.test(name)) sink.add(name, m.index, m[1])
     }
   }
@@ -64,20 +76,32 @@ const nim: Extractor = (src, sink) => {
 
 const erlang: Extractor = (src, sink) => each(src, sink, /^-include(?:_lib)?\s*\(\s*(")( *)"\s*\)/dgm, 2, 'include')
 
+/** For every "(" the index of its matching ")" (or the end of the text when it never closes), in one pass. */
+function matchingParens(code: string): Map<number, number> {
+  const close = new Map<number, number>()
+  const open: number[] = []
+  for (let i = 0; i < code.length; i++) {
+    const c = code.charCodeAt(i)
+    if (c === 40) open.push(i)
+    else if (c === 41) {
+      const o = open.pop()
+      if (o !== undefined) close.set(o, i)
+    }
+  }
+  for (const o of open) close.set(o, code.length)
+  return close
+}
+
 const clojure: Extractor = (src, sink) => {
   const code = src.code
-  for (const m of matchAll(/\(\s*:?(require|use|import)\b/dg, code)) {
-    // Take the balanced form that starts here.
-    let depth = 0
-    let end = m.index
-    for (; end < code.length; end++) {
-      const c = code[end]
-      if (c === '(') depth++
-      else if (c === ')') {
-        depth--
-        if (depth === 0) break
-      }
-    }
+  let parens: Map<number, number> | null = null
+  const re = /\(\s*:?(require|use|import)\b/dg
+  for (const m of matchAll(re, code)) {
+    // Take the balanced form that starts here (matching parens are found once, so many unclosed forms stay fast).
+    parens ??= matchingParens(code)
+    const end = parens.get(m.index) ?? code.length
+    // A require form nested inside this one is already covered by it: carry on after the whole form.
+    re.lastIndex = Math.max(re.lastIndex, end)
     const body = code.slice(m.index + m[0].length, end)
     for (const n of matchAll(/[[(\s']([a-z][\w-]*(?:\.[\w-]+)+)(?=[\s\])])/g, body)) {
       sink.add(n[1], m.index, m[1])
@@ -138,7 +162,7 @@ const blade: Extractor = (src, sink) => {
 }
 
 const ejs: Extractor = (src, sink) => {
-  for (const m of matchAll(/<%[-=_]?\s*include\s*\(?\s*(["'])([^"'\n]+)\1/dg, src.text)) sink.add(m[2], m.index, 'include')
+  for (const m of matchAll(/<%[-=_]?\s*include\s*(?:\(\s*)?(["'])([^"'\n]+)\1/dg, src.text)) sink.add(m[2], m.index, 'include')
 }
 
 const handlebars: Extractor = (src, sink) => {

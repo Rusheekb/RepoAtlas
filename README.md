@@ -24,7 +24,7 @@ Paste a link like `github.com/pallets/flask` and explore.
 | 🎓 **Test Yourself** | A quick quiz to check what you've learned. |
 | 📘 **Glossary** | 170+ technical words explained simply, with everyday analogies. Terms are linked throughout the app. |
 
-Every explanation can be pitched at your level — **Totally new**, **Beginner**, **Some experience** or **Developer**.
+Claude's explanations can be pitched at your level — **Totally new** (the default), **Beginner**, **Some experience** or **Developer**.
 
 ## How it works
 
@@ -37,7 +37,7 @@ Every explanation can be pitched at your level — **Totally new**, **Beginner**
 1. Create a key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
 2. In RepoAtlas, open **Settings → Claude AI** and paste it.
 
-You pay Anthropic directly for what you use; a typical explanation costs a few cents. RepoAtlas reuses the repository background between questions (prompt caching) to keep costs down. You can pick Claude Opus 5.5 (most capable, default), Sonnet 5.5 (faster, cheaper) or Haiku 5.5 (fastest, cheapest), and choose how much code Claude reads per answer.
+You pay Anthropic directly for what you use. With Opus 5.5 and the default “Balanced” amount of code, the first answer about a project costs about 40¢, because Claude reads the code first; follow-up answers within the hour cost roughly 5–10¢ each, because RepoAtlas reuses that background (prompt caching). Sonnet and Haiku cost less, and so does reading less code per answer. You can pick Claude Opus 5.5 (most capable, default), Sonnet 5.5 (faster, cheaper) or Haiku 5.5 (fastest, cheapest), and choose how much code Claude reads per answer.
 
 No key? Every AI feature also offers **“Copy a ready-made prompt”** that you can paste into [claude.ai](https://claude.ai).
 
@@ -48,8 +48,9 @@ Without a token GitHub allows about 60 requests per hour (each repository costs 
 ## Privacy
 
 - Everything runs in your browser. Repository data is only fetched from GitHub; AI requests go straight from your browser to Anthropic.
-- Keys are kept in this tab only, unless you choose “Remember my keys on this device”.
-- Analyses and AI answers are cached in your browser (IndexedDB) and can be cleared in **Settings → Privacy & data**.
+- Keys are kept in this tab only, unless you choose “Remember my keys on this device”. Remembered keys are stored in plain text in your browser's storage for this web address, and the public site shares its address (`rusheekb.github.io`) with every other GitHub Pages site of that account, so any page there could read them. Only turn it on for a computer you trust, or run RepoAtlas from your own copy.
+- Code from private repositories, and Claude's answers about it, are only saved on this device while “Remember my keys” is on. “Forget my keys now” (or turning that setting off) removes them, along with private projects in your Recent list.
+- Analyses and AI answers for public projects are cached in your browser (IndexedDB) and can be cleared in **Settings → Privacy & data**.
 
 ## Development
 

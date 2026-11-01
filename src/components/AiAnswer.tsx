@@ -29,10 +29,10 @@ export const CLAUDE_NEW_CHAT_URL = 'https://claude.ai/new'
 const SETTINGS_ERRORS = new Set(['invalid-key', 'no-key'])
 
 /** Friendly status line for a run. Exported for tests. */
-export function statusText(state: AiRunState, aiStatus: AiStatus | null, fromCache: boolean): string | null {
+export function statusText(state: AiRunState, aiStatus: AiStatus | null, fromCache: boolean, stale = false): string | null {
   if (state === 'loading') return aiStatus === 'writing' ? 'Writing…' : 'Claude is reading the code…'
   if (state === 'streaming') return 'Writing…'
-  if (state === 'done' && fromCache) return 'Saved answer'
+  if (state === 'done' && fromCache) return stale ? 'Saved answer · made for an older version of the code' : 'Saved answer'
   return null
 }
 
@@ -155,7 +155,7 @@ function Skeleton() {
 export function AiAnswer(props: AiAnswerProps) {
   const { task, title = 'Explained by Claude', cta = 'Explain this in depth', autoRun, compact, className, pitch } = props
   const hasKey = useHasAiKey()
-  const { text, state, aiStatus, error, errorKind, fromCache, run, cancel } = useExplanation(task, { autoRun })
+  const { text, state, aiStatus, error, errorKind, fromCache, stale, run, cancel } = useExplanation(task, { autoRun })
   const analysis = useRepoStore((s) => s.analysis)
   const openExplain = useExplain((s) => s.open)
   const openSettings = useUi((s) => s.openSettings)
@@ -172,7 +172,7 @@ export function AiAnswer(props: AiAnswerProps) {
   )
 
   const busy = state === 'loading' || state === 'streaming'
-  const status = statusText(state, aiStatus, fromCache)
+  const status = statusText(state, aiStatus, fromCache, Boolean(stale))
   const hasText = text.trim().length > 0
   const showNoKey = !hasKey && !busy && (state === 'idle' || errorKind === 'no-key') && !hasText
 

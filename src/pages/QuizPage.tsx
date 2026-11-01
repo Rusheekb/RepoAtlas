@@ -74,6 +74,7 @@ export default function QuizPage() {
         error={ai.error}
         errorKind={ai.errorKind}
         hasData={hasAi}
+        stale={Boolean(ai.stale)}
         onGenerate={ai.run}
         onCancel={ai.cancel}
         generateLabel="Generate a quiz with Claude"

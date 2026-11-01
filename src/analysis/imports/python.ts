@@ -9,7 +9,7 @@ function handleStatement(stmt: string, offset: number, sink: ImportSink): void {
   let m = /^(?:import|cimport)\s+(.+)$/s.exec(s)
   if (m) {
     for (const part of m[1].split(',')) {
-      const [mod, alias] = part.trim().split(/\s+as\s+/)
+      const [mod, alias] = part.trim().split(/(?<!\s)\s+as\s+/)
       const spec = mod?.trim() ?? ''
       if (MODULE.test(spec)) sink.add(spec, offset, 'import', alias ? [alias.trim()] : undefined)
     }
@@ -22,7 +22,7 @@ function handleStatement(stmt: string, offset: number, sink: ImportSink): void {
     const names = m[2]
       .replace(/[()\\]/g, ' ')
       .split(',')
-      .map((p) => p.trim().split(/\s+as\s+/)[0]?.trim() ?? '')
+      .map((p) => p.trim().split(/(?<!\s)\s+as\s+/)[0]?.trim() ?? '')
       .filter((p) => p === '*' || /^[A-Za-z_]\w*$/.test(p))
     sink.add(spec, offset, 'from', names)
   }
@@ -45,16 +45,22 @@ export function extractPython(src: Source, sink: ImportSink): void {
     if (/^(?:from|import|cimport)\s/.test(trimmed)) {
       // Build the logical line: join while brackets are open or the line ends with a backslash.
       const start = pos + (line.length - trimmed.length)
-      let logical = line
+      // Pieces are collected and joined once (re-testing the growing string for a trailing backslash is quadratic), and a
+      // statement never spans more than MAX_STATEMENT_LINES lines.
+      const parts = [line]
+      let last = line
       let end = nl
       let depth = bracketDelta(line)
-      while ((depth > 0 || /\\\s*$/.test(logical)) && end < n) {
+      while ((depth > 0 || endsWithBackslash(last)) && end < n && parts.length < MAX_STATEMENT_LINES) {
         const nextNl = code.indexOf('\n', end + 1)
         const next = code.slice(end + 1, nextNl === -1 ? n : nextNl)
-        logical = logical.replace(/\\\s*$/, ' ') + ' ' + next
+        if (endsWithBackslash(last)) parts[parts.length - 1] = last.replace(/\\[ \t\r]*$/, ' ')
+        parts.push(next)
+        last = next
         depth += bracketDelta(next)
         end = nextNl === -1 ? n : nextNl
       }
+      const logical = parts.join(' ')
       let offset = start
       for (const stmt of logical.trimStart().split(';')) {
         handleStatement(stmt, offset, sink)
@@ -68,6 +74,15 @@ export function extractPython(src: Source, sink: ImportSink): void {
   if (code.includes('import_module') || code.includes('__import__')) {
     for (const m of matchAll(DYNAMIC, code)) sink.add(groupText(text, m, 2), m.index, 'dynamic')
   }
+}
+
+/** Longest import statement we follow (a parenthesized list that never closes stops here). */
+const MAX_STATEMENT_LINES = 500
+
+function endsWithBackslash(line: string): boolean {
+  let i = line.length - 1
+  while (i >= 0 && (line[i] === ' ' || line[i] === '\t' || line[i] === '\r')) i--
+  return line[i] === '\\'
 }
 
 function bracketDelta(line: string): number {

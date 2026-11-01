@@ -25,7 +25,7 @@ export function suggestedQuestions(analysis: RepoAnalysis, max = 7): SuggestedQu
   const biggest = analysis.modules
     .filter((m) => m.id !== ROOT_MODULE_ID && INTERESTING_LAYERS.has(m.layer))
     .sort((a, b) => b.lines - a.lines)[0]
-  if (biggest) out.push({ emoji: biggest.emoji || '📦', text: `What does the “${biggest.name}” part do, and why is it the biggest?` })
+  if (biggest) out.push({ emoji: biggest.emoji || '📦', text: `What does the “${biggest.name}” part do, and why is it the biggest part of the main code?` })
 
   const tech =
     analysis.techStack.find((t) => t.category !== 'language' && t.importance === 'core') ??

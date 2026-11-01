@@ -1,4 +1,4 @@
-import { parseRepoInput } from './parse'
+import { MAX_REF_SEGMENTS, parseRepoInput, refCandidates } from './parse'
 import type { RepoRef } from '@/core/types'
 
 const ok = (owner: string, repo: string, ref?: string): RepoRef => (ref ? { owner, repo, ref } : { owner, repo })
@@ -41,7 +41,17 @@ describe('parseRepoInput', () => {
 
     // Refs from deep links
     ['https://github.com/owner/repo/tree/branch-name', ok('owner', 'repo', 'branch-name')],
-    ['https://github.com/owner/repo/tree/feature/x/src/dir', ok('owner', 'repo', 'feature')],
+    // A branch may contain slashes: the link keeps the first few segments for loading to try (see refCandidates).
+    ['https://github.com/owner/repo/tree/feature/x/src/dir', ok('owner', 'repo', 'feature/x/src/dir')],
+    ['https://github.com/owner/repo/tree/release/1.x', ok('owner', 'repo', 'release/1.x')],
+    ['https://github.com/owner/repo/blob/feature/x/src/a.ts', ok('owner', 'repo', 'feature/x/src/a.ts')],
+    ['https://github.com/owner/repo/tree/refs/heads/main', ok('owner', 'repo', 'main')],
+    ['https://github.com/owner/repo/tree/refs/heads/release/1.x', ok('owner', 'repo', 'release/1.x')],
+    ['https://github.com/owner/repo/tree/main/src/components', ok('owner', 'repo', 'main')],
+    ['https://github.com/owner/repo/tree/a1b2c3d/src', ok('owner', 'repo', 'a1b2c3d')],
+    ['https://github.com/owner/repo/commit/0123456789abcdef0123456789abcdef01234567', ok('owner', 'repo', '0123456789abcdef0123456789abcdef01234567')],
+    ['https://github.com/owner/repo/releases/tag/tools/v2', ok('owner', 'repo', 'tools/v2')],
+    ['https://raw.githubusercontent.com/owner/repo/feature/x/src/a.ts', ok('owner', 'repo', 'feature/x/src')],
     ['https://github.com/owner/repo/tree/feature%2Fx', ok('owner', 'repo', 'feature/x')],
     ['https://github.com/owner/repo/blob/main/src/index.ts', ok('owner', 'repo', 'main')],
     ['https://github.com/owner/repo/blob/v1.2.3/README.md#L10', ok('owner', 'repo', 'v1.2.3')],
@@ -128,7 +138,21 @@ describe('parseRepoInput', () => {
     expect(parseRepoInput(`${'a'.repeat(39)}/repo`)).toEqual(ok('a'.repeat(39), 'repo'))
   })
 
+  it('keeps at most MAX_REF_SEGMENTS segments of a deep link', () => {
+    const deep = parseRepoInput('https://github.com/o/r/tree/fix/a/b/c/d/e/f/g/h.ts')
+    expect(deep?.ref?.split('/')).toHaveLength(MAX_REF_SEGMENTS)
+  })
+
   it('does not throw on malformed percent-encoding', () => {
     expect(parseRepoInput('https://github.com/owner/repo/tree/%E0%A4%A')).toEqual(ok('owner', 'repo', '%E0%A4%A'))
+  })
+})
+
+describe('refCandidates', () => {
+  it('tries the whole ref first, then its beginnings from the shortest', () => {
+    expect(refCandidates('main')).toEqual(['main'])
+    expect(refCandidates('release/1.x')).toEqual(['release/1.x', 'release'])
+    expect(refCandidates('feature/x/src/dir')).toEqual(['feature/x/src/dir', 'feature', 'feature/x', 'feature/x/src'])
+    expect(refCandidates('  ')).toEqual([])
   })
 })

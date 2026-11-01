@@ -5,7 +5,7 @@ const name = (p: string) => detectLanguage(p)?.name ?? null
 describe('detectLanguage', () => {
   it('maps common extensions to linguist names and colors', () => {
     expect(detectLanguage('src/a.ts')).toEqual({ name: 'TypeScript', color: '#3178c6', isCode: true })
-    expect(detectLanguage('src/App.tsx')).toEqual({ name: 'TSX', color: '#3178c6', isCode: true })
+    expect(detectLanguage('src/App.tsx')).toEqual({ name: 'TSX', color: '#235a97', isCode: true })
     expect(detectLanguage('index.js')).toEqual({ name: 'JavaScript', color: '#f1e05a', isCode: true })
     expect(detectLanguage('main.py')?.color).toBe('#3572A5')
     expect(detectLanguage('main.go')?.color).toBe('#00ADD8')

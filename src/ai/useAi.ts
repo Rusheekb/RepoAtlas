@@ -1,9 +1,19 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react'
-import type { ChatMessage, ConceptMap, Quiz, Tour } from '@/core/types'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import type { ChatMessage, ConceptMap, ContextSize, ModelId, Quiz, ReadingLevel, Tour } from '@/core/types'
 import { useRepoStore } from '@/state/repo'
 import { useSettings } from '@/state/settings'
-import { aiCacheKey, getCachedAi, setCachedAi } from './cache'
-import { toAiError } from './client'
+import {
+  aiCacheKey,
+  deleteCachedAi,
+  getAiCacheEntry,
+  getCachedAi,
+  isStoredAiResult,
+  setCachedAi,
+  storedAiResult,
+  subscribeAiCache,
+  type AiCacheOptions,
+} from './cache'
+import { abortAiJobsOutside, cancelAiJob, getAiJob, isAiJobRunning, startAiJob, useAiJobs, type AiJob, type AiJobSpec } from './jobs'
 import {
   askQuestion,
   buildCopyPrompt,
@@ -14,7 +24,7 @@ import {
   runExplainTask,
   type PromptInput,
 } from './tasks'
-import type { AiContext, AiStatus, ExplainTask, PromptTask, StreamCallbacks } from './types'
+import { AiError, type AiContext, type AiStatus, type ExplainTask, type PromptTask, type StreamCallbacks } from './types'
 import { uniqueId } from './validate'
 
 export type AiRunState = 'idle' | 'loading' | 'streaming' | 'done' | 'error'
@@ -22,6 +32,17 @@ export type AiRunState = 'idle' | 'loading' | 'streaming' | 'done' | 'error'
 const NO_KEY_EXPLAIN = 'Add your Claude API key in Settings to get in-depth explanations from Claude.'
 const NO_KEY_CHAT = 'Add your Claude API key in Settings to chat with Claude about this project.'
 const NO_REPO = 'Open a repository first.'
+
+/*
+ * How results are kept (see ./cache and ./jobs):
+ * - Claude requests run as jobs that outlive the component that started them: switching views never cancels one, and
+ *   the result is saved even if nobody is looking. Only Stop, a new request for the same thing, or a change of
+ *   repository / model / reading level stops a job.
+ * - Results are cached per repository, model and reading level, together with the commit they were made for. After
+ *   the project gets new commits the reader still sees what they paid for, marked `stale` so the UI can offer to
+ *   regenerate it. Chat history is kept per repository.
+ * - Results about private repositories stay in memory only, unless the reader asked to remember their keys.
+ */
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Context
@@ -62,38 +83,184 @@ function useLatest<T>(value: T) {
   return ref
 }
 
-function repoId(input: PromptInput): [string, string] {
-  return [input.analysis.meta.fullName, input.analysis.commitSha]
+/** What the cache keys and job scopes of the open repository are made of. */
+interface RepoScope {
+  fullName: string
+  commitSha: string
+  model: ModelId
+  level: ReadingLevel
+  contextSize: ContextSize
+  isPrivate: boolean
+  /** Jobs started for another scope are stopped (see watchScope). */
+  scope: string
+}
+
+function scopeOf(fullName: string, model: string, level: string): string {
+  return aiCacheKey([fullName, model, level])
+}
+
+function useRepoScope(): RepoScope | null {
+  const analysis = useRepoStore((s) => s.analysis)
+  const model = useSettings((s) => s.model)
+  const level = useSettings((s) => s.readingLevel)
+  const contextSize = useSettings((s) => s.contextSize)
+  return useMemo(() => {
+    if (!analysis) return null
+    const fullName = analysis.meta.fullName
+    return {
+      fullName,
+      commitSha: analysis.commitSha,
+      model,
+      level,
+      contextSize,
+      isPrivate: Boolean(analysis.meta.isPrivate),
+      scope: scopeOf(fullName, model, level),
+    }
+  }, [analysis, model, level, contextSize])
+}
+
+/** Private repositories' results are only written to disk when the reader asked to remember their keys. */
+function cacheOptions(isPrivate: boolean): AiCacheOptions {
+  return { private: isPrivate, persist: !isPrivate || useSettings.getState().rememberKeys }
+}
+
+let watchingScope = false
+
+/** Stop jobs for another repository / model / reading level as soon as the reader switches. Installed once. */
+function watchScope() {
+  if (watchingScope) return
+  watchingScope = true
+  const current = (): string | null => {
+    const analysis = useRepoStore.getState().analysis
+    if (!analysis) return null
+    const { model, readingLevel } = useSettings.getState()
+    return scopeOf(analysis.meta.fullName, model, readingLevel)
+  }
+  let last = current()
+  const check = () => {
+    const next = current()
+    if (!next || next === last) return
+    last = next
+    abortAiJobsOutside(next)
+  }
+  useSettings.subscribe(check)
+  useRepoStore.subscribe(check)
+}
+
+/** Any error → a friendly AiError. The SDK's error classes are only loaded when they're needed. */
+async function friendlyError(err: unknown): Promise<AiError> {
+  if (err instanceof AiError) return err
+  const { toAiError } = await import('./client')
+  return toAiError(err)
+}
+
+function launch<T>(spec: AiJobSpec<T>): void {
+  watchScope()
+  startAiJob(spec)
+}
+
+function subscribeCache(onChange: () => void): () => void {
+  return subscribeAiCache(() => onChange())
+}
+
+/**
+ * The cache entry for `key`, kept up to date (memory layer, shared by every component). Starts loading it from storage
+ * when memory doesn't know it yet. `known` is false until that lookup has finished.
+ */
+function useCacheEntry(key: string | null, load?: { fallback?: () => Promise<unknown>; private?: boolean }): { known: boolean; value: unknown } {
+  const entry = useSyncExternalStore(subscribeCache, () => (key ? getAiCacheEntry(key) : undefined))
+  const loadRef = useLatest(load)
+  const missing = entry === undefined
+  useEffect(() => {
+    if (key && missing) void getCachedAi(key, loadRef.current)
+  }, [key, missing, loadRef])
+  return { known: Boolean(key) && !missing, value: entry?.value }
+}
+
+interface Settled<T> {
+  data: T
+  commitSha: string
+}
+
+/**
+ * A saved result ({ data, commitSha }) for `key`. `legacyKey` is where older versions of RepoAtlas saved it (with the
+ * commit in the key): read once if nothing is saved under `key` yet.
+ */
+function useStored<T>(
+  key: string | null,
+  legacyKey: string | null,
+  parse: (v: unknown) => T | null,
+  repo: RepoScope | null,
+): { known: boolean; stored: Settled<T> | null } {
+  const commitSha = repo?.commitSha ?? ''
+  const isPrivate = repo?.isPrivate ?? false
+  const entry = useCacheEntry(
+    key,
+    repo
+      ? {
+          private: repo.isPrivate,
+          fallback:
+            legacyKey && key
+              ? async () => {
+                  const old = await getCachedAi<unknown>(legacyKey)
+                  const data = old === undefined ? null : parse(old)
+                  if (data === null) return undefined
+                  // Save it under the new key, so it is still found after the project's next commit.
+                  const record = storedAiResult(data, commitSha)
+                  void setCachedAi(key, record, cacheOptions(isPrivate))
+                  return record
+                }
+              : undefined,
+        }
+      : undefined,
+  )
+  const stored = useMemo(() => {
+    const v = entry.value
+    if (!isStoredAiResult(v)) return null
+    const data = parse(v.data)
+    return data === null ? null : { data, commitSha: v.commitSha }
+  }, [entry.value, parse])
+  return { known: entry.known, stored }
+}
+
+/** The job producing `key`, if any (running, or finished in this tab). */
+function useJob(key: string | null): AiJob | undefined {
+  return useAiJobs((s) => (key ? s.jobs[key] : undefined))
+}
+
+interface LocalError {
+  key: string | null
+  message: string
+  kind: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Explanations
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface ExplanationState {
-  text: string
-  state: AiRunState
-  aiStatus: AiStatus | null
-  error: string | null
-  errorKind: string | null
-  fromCache: boolean
+function explanationKeys(repo: RepoScope, taskKey: string): { key: string; legacyKey: string } {
+  return {
+    key: aiCacheKey(['explain', repo.fullName, repo.model, repo.level, taskKey]),
+    legacyKey: aiCacheKey(['explain', repo.fullName, repo.commitSha, repo.model, repo.level, repo.contextSize, taskKey]),
+  }
 }
 
-const IDLE_EXPLANATION: ExplanationState = { text: '', state: 'idle', aiStatus: null, error: null, errorKind: null, fromCache: false }
+function parseText(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v : null
+}
 
 /** The cache key for an explanation, or null when no repository is loaded / no task. */
 export function useExplanationCacheKey(task: ExplainTask | null): string | null {
-  const input = usePromptInput()
-  const model = useSettings((s) => s.model)
+  const repo = useRepoScope()
   const taskKey = task ? explainTaskKey(task) : null
-  if (!input || !taskKey) return null
-  return aiCacheKey(['explain', ...repoId(input), model, input.level, input.contextSize, taskKey])
+  return repo && taskKey ? explanationKeys(repo, taskKey).key : null
 }
 
 /**
  * Explanation for a task. Loads a cached result automatically (if any) when the task changes; never auto-calls Claude
- * unless `autoRun` is true. `run()` streams a fresh answer (and caches it). `cancel()` aborts.
- * Cache key includes repo, commit, model, reading level and task.
+ * unless `autoRun` is true (and nothing at all is saved). `run()` streams a fresh answer (and caches it); `cancel()`
+ * stops it. Cached per repo, model, reading level and task; `stale` means it was written for an older commit.
+ * Switching to another task or view does not stop a running answer: it finishes and is saved in the background.
  */
 export function useExplanation(task: ExplainTask | null, opts?: { autoRun?: boolean }): {
   text: string
@@ -102,98 +269,69 @@ export function useExplanation(task: ExplainTask | null, opts?: { autoRun?: bool
   error: string | null
   errorKind: string | null
   fromCache: boolean
+  /** The saved answer was written for an older version of the code (offer to regenerate it). */
+  stale: boolean
   run: () => void
   cancel: () => void
 } {
   const ai = useAiContext()
-  const cacheKey = useExplanationCacheKey(task)
-  const [st, setSt] = useState<ExplanationState>(IDLE_EXPLANATION)
-  const latest = useLatest({ task, ai, cacheKey, autoRun: Boolean(opts?.autoRun) })
-  const ctrlRef = useRef<AbortController | null>(null)
-  const runIdRef = useRef(0)
-  /** Last complete answer for the current key, restored when a regeneration is cancelled or fails. */
-  const settledRef = useRef<{ key: string | null; text: string; fromCache: boolean }>({ key: null, text: '', fromCache: false })
-
-  const stop = useCallback(() => {
-    runIdRef.current++
-    ctrlRef.current?.abort()
-    ctrlRef.current = null
-  }, [])
+  const repo = useRepoScope()
+  const taskKey = task ? explainTaskKey(task) : null
+  const keys = repo && taskKey ? explanationKeys(repo, taskKey) : null
+  const key = keys?.key ?? null
+  const { known, stored } = useStored(key, keys?.legacyKey ?? null, parseText, repo)
+  const job = useJob(key)
+  const [localError, setLocalError] = useState<LocalError | null>(null)
+  const latest = useLatest({ task, ai, key, repo })
 
   const run = useCallback(() => {
-    const { task: t, ai: ctx, cacheKey: key } = latest.current
-    if (!t || !key) return
+    const { task: t, ai: ctx, key: k, repo: r } = latest.current
+    if (!t || !k || !r) return
     if (!ctx) {
-      setSt((s) => ({ ...s, state: 'error', aiStatus: null, error: NO_KEY_EXPLAIN, errorKind: 'no-key' }))
+      setLocalError({ key: k, message: NO_KEY_EXPLAIN, kind: 'no-key' })
       return
     }
-    stop()
-    const ctrl = new AbortController()
-    ctrlRef.current = ctrl
-    const id = runIdRef.current
-    const live = () => id === runIdRef.current
-    setSt({ text: '', state: 'loading', aiStatus: 'connecting', error: null, errorKind: null, fromCache: false })
-    runExplainTask(ctx, t, {
-      signal: ctrl.signal,
-      onStatus: (aiStatus) => {
-        if (live()) setSt((s) => ({ ...s, aiStatus }))
-      },
-      onText: (text) => {
-        if (live()) setSt((s) => ({ ...s, text, state: 'streaming' }))
-      },
-    }).then(
-      (text) => {
-        if (!live()) return
-        ctrlRef.current = null
-        settledRef.current = { key, text, fromCache: false }
-        setSt({ text, state: 'done', aiStatus: 'done', error: null, errorKind: null, fromCache: false })
-        void setCachedAi(key, text)
-      },
-      (err: unknown) => {
-        if (!live()) return
-        ctrlRef.current = null
-        const e = toAiError(err)
-        const prev = settledRef.current.key === key ? settledRef.current : null
-        if (e.kind === 'aborted') {
-          setSt(prev ? { ...IDLE_EXPLANATION, text: prev.text, state: 'done', fromCache: prev.fromCache } : IDLE_EXPLANATION)
-          return
-        }
-        setSt({ text: prev?.text ?? '', state: 'error', aiStatus: null, error: e.message, errorKind: e.kind, fromCache: prev?.fromCache ?? false })
-      },
-    )
-  }, [latest, stop])
+    setLocalError(null)
+    launch<string>({
+      key: k,
+      scope: r.scope,
+      private: r.isPrivate,
+      run: (cb) => runExplainTask(ctx, t, cb),
+      toError: friendlyError,
+      onDone: (text) => void setCachedAi(k, storedAiResult(text, r.commitSha), cacheOptions(r.isPrivate)),
+    })
+  }, [latest])
 
   const cancel = useCallback(() => {
-    if (!ctrlRef.current) return
-    stop()
-    const prev = settledRef.current.key === latest.current.cacheKey ? settledRef.current : null
-    setSt(prev ? { ...IDLE_EXPLANATION, text: prev.text, state: 'done', fromCache: prev.fromCache } : IDLE_EXPLANATION)
-  }, [latest, stop])
+    const k = latest.current.key
+    if (k && isAiJobRunning(getAiJob(k))) cancelAiJob(k)
+  }, [latest])
 
+  // autoRun: decided once per key, when we know whether anything is saved.
+  const decided = useRef<string | null>(null)
+  const autoRun = Boolean(opts?.autoRun)
   useEffect(() => {
-    // A different task / repo / model / level: stop anything in flight, then look in the cache.
-    stop()
-    settledRef.current = { key: null, text: '', fromCache: false }
-    setSt(IDLE_EXPLANATION)
-    if (!cacheKey) return
-    const loadId = runIdRef.current
-    let alive = true
-    void getCachedAi<string>(cacheKey).then((hit) => {
-      if (!alive || loadId !== runIdRef.current) return
-      if (typeof hit === 'string' && hit.trim()) {
-        settledRef.current = { key: cacheKey, text: hit, fromCache: true }
-        setSt({ text: hit, state: 'done', aiStatus: null, error: null, errorKind: null, fromCache: true })
-      } else if (latest.current.autoRun && latest.current.ai) {
-        run()
-      }
-    })
-    return () => {
-      alive = false
-      stop()
-    }
-  }, [cacheKey, latest, run, stop])
+    if (!key || !known || decided.current === key) return
+    decided.current = key
+    if (autoRun && !stored && !getAiJob(key) && latest.current.ai) run()
+  }, [key, known, stored, autoRun, run, latest])
 
-  return { ...st, run, cancel }
+  const running = isAiJobRunning(job)
+  const local = localError && localError.key === key ? localError : null
+  const jobError = job?.phase === 'error' ? job.error : null
+  const text = running ? job.text : (stored?.data ?? '')
+  const state: AiRunState = running ? job.phase : jobError || local ? 'error' : stored ? 'done' : 'idle'
+  return {
+    text,
+    state,
+    aiStatus: running ? job.aiStatus : job?.phase === 'done' && stored ? 'done' : null,
+    error: jobError?.message ?? local?.message ?? null,
+    errorKind: jobError?.kind ?? local?.kind ?? null,
+    fromCache: Boolean(stored) && !running && job?.phase !== 'done',
+    stale: Boolean(stored && repo && !running && stored.commitSha !== repo.commitSha),
+    run,
+    cancel,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,137 +348,94 @@ export interface StructuredAi<T> {
   error: string | null
   errorKind: string | null
   fromCache: boolean
+  /**
+   * The result shown was made for an older version of the code (the project has new commits since): show a note
+   * and offer to regenerate. Always set by the hooks.
+   */
+  stale?: boolean
   run: () => void
   cancel: () => void
 }
 
-type StructuredState<T> = Omit<StructuredAi<T>, 'run' | 'cancel'>
+type StructuredKind = 'concepts' | 'tours' | 'quiz'
 
-function idleStructured<T>(): StructuredState<T> {
-  return { data: null, state: 'idle', aiStatus: null, progressChars: 0, error: null, errorKind: null, fromCache: false }
+function structuredKeys(kind: StructuredKind, repo: RepoScope): { key: string; legacyKey: string } {
+  return {
+    key: aiCacheKey([kind, repo.fullName, repo.model, repo.level]),
+    legacyKey: aiCacheKey([kind, repo.fullName, repo.commitSha, repo.model, repo.level]),
+  }
 }
 
-interface StructuredInternals<T> {
-  cacheKey: string | null
-  setState: Dispatch<SetStateAction<StructuredState<T>>>
-  dataRef: RefObject<T | null>
-  ai: () => AiContext | null
+/** The fields every structured hook derives from its saved result, its job and a local "no key" error. */
+function structuredView<T>(
+  data: T | null,
+  stale: boolean,
+  job: AiJob | undefined,
+  local: LocalError | null,
+): Omit<StructuredAi<T>, 'run' | 'cancel'> {
+  const running = isAiJobRunning(job)
+  const jobError = job?.phase === 'error' ? job.error : null
+  return {
+    data,
+    state: running ? job.phase : jobError || local ? 'error' : data !== null ? 'done' : 'idle',
+    aiStatus: running ? job.aiStatus : job?.phase === 'done' && data !== null ? 'done' : null,
+    progressChars: running ? job.text.length : 0,
+    error: jobError?.message ?? local?.message ?? null,
+    errorKind: jobError?.kind ?? local?.kind ?? null,
+    fromCache: data !== null && !running && job?.phase !== 'done',
+    stale: data !== null && stale,
+  }
 }
 
 function useStructured<T>(
-  kind: 'concepts' | 'tours' | 'quiz',
+  kind: 'concepts' | 'quiz',
   generate: (ctx: AiContext, cb: StreamCallbacks) => Promise<T>,
-  fromCacheValue: (value: unknown) => T | null,
+  parse: (value: unknown) => T | null,
   opts?: { autoRun?: boolean },
-): StructuredAi<T> & { internals: StructuredInternals<T> } {
-  const input = usePromptInput()
+): StructuredAi<T> {
   const ai = useAiContext()
-  const model = useSettings((s) => s.model)
-  const cacheKey = input ? aiCacheKey([kind, ...repoId(input), model, input.level]) : null
-  const [st, setSt] = useState<StructuredState<T>>(idleStructured)
-  const latest = useLatest({ ai, cacheKey, generate, autoRun: Boolean(opts?.autoRun) })
-  const dataRef = useRef<T | null>(null)
-  const ctrlRef = useRef<AbortController | null>(null)
-  const runIdRef = useRef(0)
-  const settledRef = useRef<{ key: string | null; data: T | null; fromCache: boolean }>({ key: null, data: null, fromCache: false })
-
-  useLayoutEffect(() => {
-    dataRef.current = st.data
-  }, [st.data])
-
-  const stop = useCallback(() => {
-    runIdRef.current++
-    ctrlRef.current?.abort()
-    ctrlRef.current = null
-  }, [])
-
-  const restore = useCallback(() => {
-    const prev = settledRef.current.key === latest.current.cacheKey ? settledRef.current : null
-    // Keep anything added since the last full run (e.g. a custom tour), not just the last generated result.
-    const data = dataRef.current ?? prev?.data ?? null
-    return data ? { ...idleStructured<T>(), data, state: 'done' as const, fromCache: prev?.fromCache ?? false } : idleStructured<T>()
-  }, [latest])
+  const repo = useRepoScope()
+  const keys = repo ? structuredKeys(kind, repo) : null
+  const key = keys?.key ?? null
+  const { known, stored } = useStored(key, keys?.legacyKey ?? null, parse, repo)
+  const job = useJob(key)
+  const [localError, setLocalError] = useState<LocalError | null>(null)
+  const latest = useLatest({ ai, key, repo, generate })
 
   const run = useCallback(() => {
-    const { ai: ctx, cacheKey: key, generate: gen } = latest.current
-    if (!key) return
+    const { ai: ctx, key: k, repo: r, generate: gen } = latest.current
+    if (!k || !r) return
     if (!ctx) {
-      setSt((s) => ({ ...s, state: 'error', aiStatus: null, error: NO_KEY_EXPLAIN, errorKind: 'no-key' }))
+      setLocalError({ key: k, message: NO_KEY_EXPLAIN, kind: 'no-key' })
       return
     }
-    stop()
-    const ctrl = new AbortController()
-    ctrlRef.current = ctrl
-    const id = runIdRef.current
-    const live = () => id === runIdRef.current
-    setSt((s) => ({ ...s, state: 'loading', aiStatus: 'connecting', progressChars: 0, error: null, errorKind: null }))
-    gen(ctx, {
-      signal: ctrl.signal,
-      onStatus: (aiStatus) => {
-        if (live()) setSt((s) => ({ ...s, aiStatus }))
-      },
-      onText: (text) => {
-        if (live()) setSt((s) => ({ ...s, state: 'streaming', progressChars: text.length }))
-      },
-    }).then(
-      (data) => {
-        if (!live()) return
-        ctrlRef.current = null
-        settledRef.current = { key, data, fromCache: false }
-        dataRef.current = data
-        setSt({ data, state: 'done', aiStatus: 'done', progressChars: 0, error: null, errorKind: null, fromCache: false })
-        void setCachedAi(key, data)
-      },
-      (err: unknown) => {
-        if (!live()) return
-        ctrlRef.current = null
-        const e = toAiError(err)
-        if (e.kind === 'aborted') {
-          setSt(restore())
-          return
-        }
-        setSt((s) => ({ ...s, state: 'error', aiStatus: null, progressChars: 0, error: e.message, errorKind: e.kind }))
-      },
-    )
-  }, [latest, restore, stop])
+    setLocalError(null)
+    launch<T>({
+      key: k,
+      scope: r.scope,
+      private: r.isPrivate,
+      run: (cb) => gen(ctx, cb),
+      toError: friendlyError,
+      onDone: (data) => void setCachedAi(k, storedAiResult(data, r.commitSha), cacheOptions(r.isPrivate)),
+    })
+  }, [latest])
 
   const cancel = useCallback(() => {
-    if (!ctrlRef.current) return
-    stop()
-    setSt(restore())
-  }, [restore, stop])
+    const k = latest.current.key
+    if (k && isAiJobRunning(getAiJob(k))) cancelAiJob(k)
+  }, [latest])
 
+  const decided = useRef<string | null>(null)
+  const autoRun = Boolean(opts?.autoRun)
   useEffect(() => {
-    stop()
-    settledRef.current = { key: null, data: null, fromCache: false }
-    dataRef.current = null
-    setSt(idleStructured<T>())
-    if (!cacheKey) return
-    const loadId = runIdRef.current
-    let alive = true
-    void getCachedAi<unknown>(cacheKey).then((hit) => {
-      if (!alive || loadId !== runIdRef.current) return
-      const data = hit === undefined ? null : fromCacheValue(hit)
-      if (data !== null) {
-        settledRef.current = { key: cacheKey, data, fromCache: true }
-        dataRef.current = data
-        setSt({ ...idleStructured<T>(), data, state: 'done', fromCache: true })
-      } else if (latest.current.autoRun && latest.current.ai) {
-        run()
-      }
-    })
-    return () => {
-      alive = false
-      stop()
-    }
-  }, [cacheKey, fromCacheValue, latest, run, stop])
+    if (!key || !known || decided.current === key) return
+    decided.current = key
+    if (autoRun && !stored && !getAiJob(key) && latest.current.ai) run()
+  }, [key, known, stored, autoRun, run, latest])
 
-  return {
-    ...st,
-    run,
-    cancel,
-    internals: { cacheKey, setState: setSt, dataRef, ai: () => latest.current.ai },
-  }
+  const local = localError && localError.key === key ? localError : null
+  const stale = Boolean(stored && repo && stored.commitSha !== repo.commitSha)
+  return { ...structuredView(stored?.data ?? null, stale, job, local), run, cancel }
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -352,113 +447,141 @@ function cachedConceptMap(v: unknown): ConceptMap | null {
 }
 
 function cachedTours(v: unknown): Tour[] | null {
-  return Array.isArray(v) && v.every((t) => isObject(t) && Array.isArray(t.steps)) ? (v as Tour[]) : null
+  return Array.isArray(v) && v.every((t) => isObject(t) && typeof t.id === 'string' && Array.isArray(t.steps)) ? (v as Tour[]) : null
 }
 
 function cachedQuiz(v: unknown): Quiz | null {
   return isObject(v) && Array.isArray(v.questions) ? (v as unknown as Quiz) : null
 }
 
-function stripInternals<T>(s: StructuredAi<T> & { internals: unknown }): StructuredAi<T> {
-  const { internals: _internals, ...rest } = s
-  return rest
-}
+const runConceptMap = (ctx: AiContext, cb: StreamCallbacks) => generateConceptMap(ctx, cb)
+const runQuiz = (ctx: AiContext, cb: StreamCallbacks) => generateQuiz(ctx, cb)
 
-/** The AI concept map ("Key Ideas"), cached per repo, commit, model and reading level. */
+/** The AI concept map ("Key Ideas"), cached per repo, model and reading level (`stale` after new commits). */
 export function useConceptMap(opts?: { autoRun?: boolean }): StructuredAi<ConceptMap> {
-  return stripInternals(useStructured('concepts', (ctx, cb) => generateConceptMap(ctx, cb), cachedConceptMap, opts))
+  return useStructured('concepts', runConceptMap, cachedConceptMap, opts)
 }
 
-/** Tours: generated set (cached) plus the ability to request a custom tour for a question (appended & cached). */
+/** The AI quiz ("Test Yourself"), cached per repo, model and reading level (`stale` after new commits). */
+export function useQuiz(opts?: { autoRun?: boolean }): StructuredAi<Quiz> {
+  return useStructured('quiz', runQuiz, cachedQuiz, opts)
+}
+
+function storedTours(v: unknown): Tour[] {
+  return isStoredAiResult(v) ? (cachedTours(v.data) ?? []) : []
+}
+
+/**
+ * Tours: the generated set plus the reader's own tours (one per question they asked). They are saved separately,
+ * so "Write new tours" replaces only the generated set and links to the reader's own tours keep working.
+ */
 export function useTours(opts?: { autoRun?: boolean }): StructuredAi<Tour[]> & { askTour: (question: string) => void; asking: boolean } {
-  const base = useStructured<Tour[]>('tours', (ctx, cb) => generateTours(ctx, undefined, cb), cachedTours, opts)
-  const { internals } = base
-  const latest = useLatest(internals)
-  const [asking, setAsking] = useState(false)
-  const askCtrlRef = useRef<AbortController | null>(null)
-  const askIdRef = useRef(0)
+  const ai = useAiContext()
+  const repo = useRepoScope()
+  const keys = repo ? structuredKeys('tours', repo) : null
+  const genKey = keys?.key ?? null
+  const customKey = repo ? aiCacheKey(['tours-custom', repo.fullName, repo.model, repo.level]) : null
+  const generated = useStored(genKey, keys?.legacyKey ?? null, cachedTours, repo)
+  const custom = useStored(customKey, null, cachedTours, repo)
+  const genJob = useJob(genKey)
+  const askJob = useJob(customKey)
+  const [localError, setLocalError] = useState<LocalError | null>(null)
+  const latest = useLatest({ ai, genKey, customKey, repo })
 
-  const stopAsk = useCallback(() => {
-    askIdRef.current++
-    askCtrlRef.current?.abort()
-    askCtrlRef.current = null
-  }, [])
+  const data = useMemo(() => {
+    if (!generated.stored && !custom.stored) return null
+    return [...(generated.stored?.data ?? []), ...(custom.stored?.data ?? [])]
+  }, [generated.stored, custom.stored])
 
-  // A different repo / model / level: drop any custom-tour request in flight.
-  useEffect(() => {
-    setAsking(false)
-    return stopAsk
-  }, [internals.cacheKey, stopAsk])
+  const run = useCallback(() => {
+    const { ai: ctx, genKey: g, customKey: c, repo: r } = latest.current
+    if (!g || !c || !r) return
+    if (!ctx) {
+      setLocalError({ key: g, message: NO_KEY_EXPLAIN, kind: 'no-key' })
+      return
+    }
+    setLocalError(null)
+    const takenIds = new Set(storedTours(getAiCacheEntry(c)?.value).map((t) => t.id))
+    launch<Tour[]>({
+      key: g,
+      scope: r.scope,
+      private: r.isPrivate,
+      run: (cb) => generateTours(ctx, { takenIds }, cb),
+      toError: friendlyError,
+      onDone: async (tours) => {
+        // Never take an id one of the reader's own tours already uses (their links must keep working).
+        const taken = new Set(storedTours(await getCachedAi(c)).map((t) => t.id))
+        const next = tours.map((t) => (taken.has(t.id) ? { ...t, id: uniqueId(t.id, taken, 'tour') } : (taken.add(t.id), t)))
+        void setCachedAi(g, storedAiResult(next, r.commitSha), cacheOptions(r.isPrivate))
+      },
+    })
+  }, [latest])
 
   const askTour = useCallback(
     (question: string) => {
       const q = question.trim()
       if (!q) return
-      const { cacheKey: key, setState, dataRef, ai } = latest.current
-      const ctx = ai()
-      if (!key) return
+      const { ai: ctx, genKey: g, customKey: c, repo: r } = latest.current
+      if (!g || !c || !r) return
       if (!ctx) {
-        setState((s) => ({ ...s, error: NO_KEY_EXPLAIN, errorKind: 'no-key' }))
+        setLocalError({ key: g, message: NO_KEY_EXPLAIN, kind: 'no-key' })
         return
       }
-      stopAsk()
-      const ctrl = new AbortController()
-      askCtrlRef.current = ctrl
-      const id = askIdRef.current
-      const live = () => id === askIdRef.current && latest.current.cacheKey === key
-      setAsking(true)
-      setState((s) => ({ ...s, aiStatus: 'connecting', progressChars: 0, error: null, errorKind: null }))
-      const takenIds = new Set((dataRef.current ?? []).map((t) => t.id))
-      generateTours(ctx, { question: q, takenIds }, {
-        signal: ctrl.signal,
-        onStatus: (aiStatus) => {
-          if (live()) setState((s) => ({ ...s, aiStatus }))
-        },
-        onText: (text) => {
-          if (live()) setState((s) => ({ ...s, progressChars: text.length }))
-        },
-      }).then(
-        (tours) => {
-          if (!live()) return
-          askCtrlRef.current = null
-          setAsking(false)
-          const current = latest.current.dataRef.current ?? []
-          const taken = new Set(current.map((t) => t.id))
+      setLocalError(null)
+      const takenIds = new Set([...storedTours(getAiCacheEntry(g)?.value), ...storedTours(getAiCacheEntry(c)?.value)].map((t) => t.id))
+      launch<Tour[]>({
+        key: c,
+        scope: r.scope,
+        private: r.isPrivate,
+        run: (cb) => generateTours(ctx, { question: q, takenIds }, cb),
+        toError: friendlyError,
+        onDone: async (tours) => {
+          const [gen, mine] = await Promise.all([getCachedAi(g), getCachedAi(c)])
+          const current = storedTours(mine)
+          const taken = new Set([...storedTours(gen), ...current].map((t) => t.id))
           const added = tours.slice(0, 1).map((t) => ({ ...t, id: uniqueId(t.id, taken, 'tour') }))
-          const next = [...current, ...added]
-          latest.current.dataRef.current = next
-          setState((s) => ({ ...s, data: next, state: 'done', aiStatus: 'done', progressChars: 0 }))
-          void setCachedAi(key, next)
+          void setCachedAi(c, storedAiResult([...current, ...added], r.commitSha), cacheOptions(r.isPrivate))
         },
-        (err: unknown) => {
-          if (!live()) return
-          askCtrlRef.current = null
-          setAsking(false)
-          const e = toAiError(err)
-          if (e.kind === 'aborted') setState((s) => ({ ...s, aiStatus: null, progressChars: 0 }))
-          else setState((s) => ({ ...s, aiStatus: null, progressChars: 0, error: e.message, errorKind: e.kind }))
-        },
-      )
+      })
     },
-    [latest, stopAsk],
+    [latest],
   )
 
-  const baseCancel = base.cancel
   const cancel = useCallback(() => {
-    if (askCtrlRef.current) {
-      stopAsk()
-      setAsking(false)
-      latest.current.setState((s) => ({ ...s, aiStatus: null, progressChars: 0 }))
+    for (const k of [latest.current.genKey, latest.current.customKey]) {
+      if (k && isAiJobRunning(getAiJob(k))) cancelAiJob(k)
     }
-    baseCancel()
-  }, [baseCancel, latest, stopAsk])
+  }, [latest])
 
-  return { ...stripInternals(base), cancel, askTour, asking }
-}
+  const decided = useRef<string | null>(null)
+  const autoRun = Boolean(opts?.autoRun)
+  const known = generated.known && custom.known
+  useEffect(() => {
+    if (!genKey || !known || decided.current === genKey) return
+    decided.current = genKey
+    if (autoRun && !generated.stored && !custom.stored && !getAiJob(genKey) && latest.current.ai) run()
+  }, [genKey, known, generated.stored, custom.stored, autoRun, run, latest])
 
-/** The AI quiz ("Test Yourself"), cached per repo, commit, model and reading level. */
-export function useQuiz(opts?: { autoRun?: boolean }): StructuredAi<Quiz> {
-  return stripInternals(useStructured('quiz', (ctx, cb) => generateQuiz(ctx, cb), cachedQuiz, opts))
+  const local = localError && localError.key === genKey ? localError : null
+  const asking = isAiJobRunning(askJob)
+  const basis = generated.stored ?? custom.stored
+  const stale = Boolean(repo && basis && basis.commitSha !== repo.commitSha)
+  const view = structuredView(data, stale, genJob, local)
+  // The most recent failure (a full run or a question) is the one to show.
+  const askError = askJob?.phase === 'error' ? askJob : null
+  const genError = genJob?.phase === 'error' ? genJob : null
+  const lastError = askError && (!genError || askError.startedAt >= genError.startedAt) ? askError.error : null
+  return {
+    ...view,
+    aiStatus: asking ? askJob.aiStatus : view.aiStatus,
+    progressChars: asking ? askJob.text.length : view.progressChars,
+    error: lastError?.message ?? view.error,
+    errorKind: lastError?.kind ?? view.errorKind,
+    run,
+    cancel,
+    askTour,
+    asking,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -481,9 +604,41 @@ function isChatMessage(v: unknown): v is ChatMessage {
   )
 }
 
+function chatMessages(v: unknown): ChatMessage[] {
+  return Array.isArray(v) ? v.filter(isChatMessage) : []
+}
+
+/** An empty reply that nobody is writing any more (the page closed while Claude was answering). */
+function isAbandonedReply(m: ChatMessage): boolean {
+  return m.role === 'assistant' && !m.content.trim() && !m.error
+}
+
+/** Edit the saved chat (`edit` returns null to leave it alone). Synchronous when the chat is in memory. */
+function editChat(key: string, isPrivate: boolean, edit: (messages: ChatMessage[]) => ChatMessage[] | null): void {
+  const apply = (saved: unknown) => {
+    const next = edit(chatMessages(saved))
+    if (next) void setCachedAi(key, next, cacheOptions(isPrivate))
+  }
+  const entry = getAiCacheEntry(key)
+  if (entry) apply(entry.value)
+  else void getCachedAi(key).then(apply)
+}
+
+function patchReply(key: string, isPrivate: boolean, replyId: string, update: (m: ChatMessage) => ChatMessage | null): void {
+  editChat(key, isPrivate, (messages) => {
+    const reply = messages.find((m) => m.id === replyId)
+    if (!reply) return null // the chat was cleared meanwhile
+    const next = update(reply)
+    return next ? messages.map((m) => (m.id === replyId ? next : m)) : messages.filter((m) => m.id !== replyId)
+  })
+}
+
 const STOPPED_NOTE = '\n\n_(You stopped this answer.)_'
 
-/** Chat about the repo. History persists per repo (IndexedDB) and survives reloads. */
+/**
+ * Chat about the repo. History is saved per repository (IndexedDB) and survives reloads and new commits. A question
+ * is saved the moment it is asked, and an answer keeps streaming (and is saved) when the reader switches views.
+ */
 export function useChat(): {
   messages: ChatMessage[]
   send: (question: string) => void
@@ -495,141 +650,114 @@ export function useChat(): {
   cancel: () => void
   clear: () => void
 } {
-  const input = usePromptInput()
   const ai = useAiContext()
-  const chatKey = input ? aiCacheKey(['chat', ...repoId(input)]) : null
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [state, setState] = useState<AiRunState>('idle')
-  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null)
-  const [error, setError] = useState<{ message: string; kind: string } | null>(null)
-  const latest = useLatest({ ai, chatKey })
-  const messagesRef = useRef<ChatMessage[]>([])
-  const ctrlRef = useRef<AbortController | null>(null)
-  const runIdRef = useRef(0)
+  const repo = useRepoScope()
+  const chatKey = repo ? aiCacheKey(['chat', repo.fullName]) : null
+  const legacyKey = repo ? aiCacheKey(['chat', repo.fullName, repo.commitSha]) : null
+  const load = useMemo(
+    () =>
+      legacyKey && repo
+        ? {
+            private: repo.isPrivate,
+            fallback: async () => {
+              const old = await getCachedAi<unknown>(legacyKey)
+              if (!Array.isArray(old) || !chatKey) return undefined
+              const messages = chatMessages(old)
+              void setCachedAi(chatKey, messages, cacheOptions(repo.isPrivate))
+              return messages
+            },
+          }
+        : undefined,
+    [legacyKey, chatKey, repo],
+  )
+  const entry = useCacheEntry(chatKey, load)
+  const job = useJob(chatKey)
+  const [localError, setLocalError] = useState<LocalError | null>(null)
+  const latest = useLatest({ ai, chatKey, legacyKey, repo, load })
 
-  const update = useCallback((next: ChatMessage[], persistKey?: string | null) => {
-    messagesRef.current = next
-    setMessages(next)
-    if (persistKey) void setCachedAi(persistKey, next)
-  }, [])
-
-  const stop = useCallback(() => {
-    runIdRef.current++
-    ctrlRef.current?.abort()
-    ctrlRef.current = null
-  }, [])
-
-  useEffect(() => {
-    stop()
-    update([])
-    setState('idle')
-    setAiStatus(null)
-    setError(null)
-    if (!chatKey) return
-    let alive = true
-    void getCachedAi<unknown>(chatKey).then((saved) => {
-      if (!alive || !Array.isArray(saved)) return
-      // A reply that was mid-stream when the page closed is kept as-is; an empty one is dropped.
-      const restored = saved.filter(isChatMessage).filter((m) => m.role === 'user' || m.content.trim() || m.error)
-      if (!restored.length) return
-      // If the reader already asked something while history was loading, keep both (old first).
-      const current = messagesRef.current
-      const ids = new Set(current.map((m) => m.id))
-      update([...restored.filter((m) => !ids.has(m.id)), ...current])
-    })
-    return () => {
-      alive = false
-      stop()
+  const running = isAiJobRunning(job)
+  const liveId = running ? job.ref : null
+  const liveText = running ? job.text : ''
+  const messages = useMemo(() => {
+    const out: ChatMessage[] = []
+    for (const m of chatMessages(entry.value)) {
+      if (m.id === liveId) out.push({ ...m, content: liveText })
+      else if (!isAbandonedReply(m)) out.push(m)
     }
-  }, [chatKey, stop, update])
+    return out
+  }, [entry.value, liveId, liveText])
 
   const send = useCallback(
     (question: string) => {
       const q = question.trim()
-      if (!q || ctrlRef.current) return
-      const { ai: ctx, chatKey: key } = latest.current
-      if (!key) {
-        setError({ message: NO_REPO, kind: 'unknown' })
-        setState('error')
+      if (!q) return
+      const { ai: ctx, chatKey: key, repo: r, load: l } = latest.current
+      if (key && isAiJobRunning(getAiJob(key))) return
+      if (!key || !r) {
+        setLocalError({ key, message: NO_REPO, kind: 'unknown' })
         return
       }
       if (!ctx) {
-        setError({ message: NO_KEY_CHAT, kind: 'no-key' })
-        setState('error')
+        setLocalError({ key, message: NO_KEY_CHAT, kind: 'no-key' })
         return
       }
-      const history = messagesRef.current
-      const now = Date.now()
-      const userMsg: ChatMessage = { id: newId(), role: 'user', content: q, createdAt: now }
-      const replyId = newId()
-      update([...history, userMsg, { id: replyId, role: 'assistant', content: '', createdAt: now }])
-
-      const ctrl = new AbortController()
-      ctrlRef.current = ctrl
-      const id = ++runIdRef.current
-      const live = () => id === runIdRef.current
-      const patch = (fields: Partial<ChatMessage>, persist: boolean) =>
-        update(
-          messagesRef.current.map((m) => (m.id === replyId ? { ...m, ...fields } : m)),
-          persist ? key : null,
-        )
-
-      setState('loading')
-      setAiStatus('connecting')
-      setError(null)
-      askQuestion(ctx, history, q, {
-        signal: ctrl.signal,
-        onStatus: (s) => {
-          if (live()) setAiStatus(s)
-        },
-        onText: (text) => {
-          if (!live()) return
-          patch({ content: text }, false)
-          setState('streaming')
-        },
-      }).then(
-        (text) => {
-          if (!live()) return
-          ctrlRef.current = null
-          patch({ content: text, error: undefined }, true)
-          setState('done')
-          setAiStatus('done')
-        },
-        (err: unknown) => {
-          if (!live()) return
-          ctrlRef.current = null
-          const e = toAiError(err)
-          setAiStatus(null)
-          if (e.kind === 'aborted') {
-            const partial = messagesRef.current.find((m) => m.id === replyId)?.content ?? ''
-            if (partial.trim()) patch({ content: partial + STOPPED_NOTE }, true)
-            else update(messagesRef.current.filter((m) => m.id !== replyId), key)
-            setState('idle')
-            return
-          }
-          patch({ error: e.message }, true)
-          setError({ message: e.message, kind: e.kind })
-          setState('error')
-        },
-      )
+      setLocalError(null)
+      const begin = (saved: unknown) => {
+        if (isAiJobRunning(getAiJob(key))) return
+        const history = chatMessages(saved).filter((m) => !isAbandonedReply(m))
+        const now = Date.now()
+        const userMsg: ChatMessage = { id: newId(), role: 'user', content: q, createdAt: now }
+        const replyId = newId()
+        // Save the question straight away: it must survive the reader leaving the page while Claude answers.
+        void setCachedAi(key, [...history, userMsg, { id: replyId, role: 'assistant', content: '', createdAt: now }], cacheOptions(r.isPrivate))
+        launch<string>({
+          key,
+          ref: replyId,
+          scope: r.scope,
+          private: r.isPrivate,
+          run: (cb) => askQuestion(ctx, history, q, cb),
+          toError: friendlyError,
+          onDone: (text) => patchReply(key, r.isPrivate, replyId, (m) => ({ ...m, content: text, error: undefined })),
+          onError: (e) => patchReply(key, r.isPrivate, replyId, (m) => ({ ...m, error: e.message })),
+          onAbort: (partial) =>
+            patchReply(key, r.isPrivate, replyId, (m) => (partial.trim() ? { ...m, content: partial + STOPPED_NOTE } : null)),
+        })
+      }
+      const saved = getAiCacheEntry(key)
+      if (saved) begin(saved.value)
+      else void getCachedAi(key, l).then(begin)
     },
-    [latest, update],
+    [latest],
   )
 
   const cancel = useCallback(() => {
-    // The pending request settles as 'aborted' and tidies up the partial reply itself.
-    ctrlRef.current?.abort()
-  }, [])
+    // The partial reply is kept with a note (or dropped if Claude hadn't written anything yet).
+    const key = latest.current.chatKey
+    if (key && isAiJobRunning(getAiJob(key))) cancelAiJob(key)
+  }, [latest])
 
   const clear = useCallback(() => {
-    stop()
-    update([], latest.current.chatKey)
-    setState('idle')
-    setAiStatus(null)
-    setError(null)
-  }, [latest, stop, update])
+    const { chatKey: key, legacyKey: old, repo: r } = latest.current
+    setLocalError(null)
+    if (!key || !r) return
+    cancelAiJob(key)
+    void setCachedAi(key, [], cacheOptions(r.isPrivate))
+    if (old) void deleteCachedAi(old)
+  }, [latest])
 
-  return { messages, send, state, aiStatus, error: error?.message ?? null, errorKind: error?.kind ?? null, cancel, clear }
+  const local = localError && localError.key === chatKey ? localError : null
+  const jobError = job?.phase === 'error' ? job.error : null
+  const state: AiRunState = running ? job.phase : jobError || local ? 'error' : job?.phase === 'done' ? 'done' : 'idle'
+  return {
+    messages,
+    send,
+    state,
+    aiStatus: running ? job.aiStatus : job?.phase === 'done' ? 'done' : null,
+    error: jobError?.message ?? local?.message ?? null,
+    errorKind: jobError?.kind ?? local?.kind ?? null,
+    cancel,
+    clear,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

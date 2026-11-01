@@ -1,4 +1,4 @@
-import { groupText, matchAll, type ImportSink, type Source } from './util'
+import { groupText, matchAll, untilTerminator, type ImportSink, type Source } from './util'
 
 /**
  * Expand a Rust use-tree into full paths:
@@ -97,8 +97,9 @@ export function expandUseTree(tree: string): string[] {
   return [...new Set(out)]
 }
 
-const MOD = /(?<![\w:])(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+(?:r#)?([A-Za-z_]\w*)\s*;/dg
-const USE = /(?<![\w:])(?:pub(?:\s*\([^)]*\))?\s+)?use\s+([^;]+);/dg
+const MOD = /(?<![\w:])(?:pub(?:\s*\([^()\n]{0,60}\))?\s+)?mod\s+(?:r#)?([A-Za-z_]\w*)\s*;/dg
+/** `use` up to its ";" (see untilTerminator); `pub use` is found at its `use`, on the same line. */
+const USE_HEAD = /(?<![\w:])use\s/g
 const EXTERN = /\bextern\s+crate\s+([A-Za-z_]\w*)(?:\s+as\s+\w+)?\s*;/dg
 const INCLUDE = /\binclude(?:_str|_bytes)?!\s*\(\s*(")( *)"\s*\)/dg
 const PATH_ATTR = /#\[\s*path\s*=\s*"([^"]+)"\s*\]\s*(?:#\[[^\]]*\]\s*)*$/
@@ -112,10 +113,11 @@ export function extractRust(src: Source, sink: ImportSink): void {
     if (attr) sink.add(attr[1], m.index, 'mod-path', [m[1]])
     else sink.add(m[1], m.index, 'mod')
   }
-  for (const m of matchAll(USE, code)) {
-    for (const path of expandUseTree(m[1])) {
+  for (const { head, body } of untilTerminator(code, USE_HEAD, ';')) {
+    if (!body) continue
+    for (const path of expandUseTree(body)) {
       const segs = path.split('::')
-      sink.add(path, m.index, 'use', [segs[segs.length - 1]])
+      sink.add(path, head.index, 'use', [segs[segs.length - 1]])
     }
   }
   for (const m of matchAll(EXTERN, code)) sink.add(m[1], m.index, 'extern')

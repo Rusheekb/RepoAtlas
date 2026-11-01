@@ -11,9 +11,11 @@ import {
   generateTours,
   historyToMessages,
   isProbablyBinary,
+  planChatFiles,
   runExplainTask,
   systemBlocks,
 } from './tasks'
+import { getRepoContext } from './context'
 import { CONTENTS, makeFixture } from './testFixtures'
 import type { AiContext } from './types'
 
@@ -69,7 +71,8 @@ describe('system blocks', () => {
     expect(b).toEqual(c)
     expect(a).toHaveLength(2)
     expect(a[0]).toEqual({ type: 'text', text: SYSTEM_INSTRUCTIONS })
-    expect(a[1].cache_control).toEqual({ type: 'ephemeral' })
+    // 1-hour cache: readers take more than 5 minutes between questions.
+    expect(a[1].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' })
     expect(a[1].text).toContain('<repository name="acme/shop"')
     expect(JSON.stringify(a)).not.toContain(levelGuidance('beginner'))
     expect(systemBlocks(ctx)).toEqual(a)
@@ -219,8 +222,55 @@ describe('askQuestion', () => {
     expect(r.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user'])
     expect(r.messages[0].content).toBe('What is this?')
     const text = userText(r)
-    expect(text).toContain('<file path="src/state/cart.ts"')
+    // cart.ts is already in the (cached) repository context in full: named, not sent again.
+    expect(getRepoContext(makeCtx().analysis, makeCtx().snapshot, 'small').coverage['src/state/cart.ts']).toBeDefined()
+    expect(text).not.toContain('<file path="src/state/cart.ts"')
+    expect(text).toContain('already in the project material above: `src/state/cart.ts`')
     expect(text).toContain('<question>\nHow does the shopping cart remember items?\n</question>')
+  })
+
+  it('sends only what the shared context does not already show', async () => {
+    const ctx = makeCtx({ contextSize: 'small' })
+    const long = Array.from({ length: 4000 }, (_, i) => `export const cartItem${i} = ${i} // remembers cart items`).join('\n')
+    ctx.snapshot.files['src/state/cart.ts'] = long
+    ctx.analysis.files['src/state/cart.ts'].lines = 4000
+    const cov = getRepoContext(ctx.analysis, ctx.snapshot, 'small').coverage['src/state/cart.ts']
+    expect(cov.totalLines).toBe(4000)
+    expect(cov.shownLines).toBeLessThan(4000)
+    expect(cov.shownLines).toBeGreaterThan(10)
+
+    const plan = await planChatFiles(ctx, 'How does the cart remember items?', { contextSize: 'small', maxFiles: 6 })
+    const cart = plan.files.find((f) => f.path === 'src/state/cart.ts')
+    expect(cart?.fromLine).toBe(cov.shownLines + 1)
+
+    await askQuestion(ctx, [], 'How does the cart remember items?')
+    const text = userText(lastRequest(client.streamText))
+    expect(text).toContain(`<file path="src/state/cart.ts" lines="4000" from_line="${cov.shownLines + 1}">`)
+    expect(text).toContain(`Lines 1–${cov.shownLines} of this file are already in the project material above`)
+    // The first line is in the context, so it isn't repeated in the question.
+    expect(text).not.toContain('export const cartItem0 = 0')
+    expect(text).toContain(`export const cartItem${cov.shownLines} = ${cov.shownLines}`)
+  })
+
+  it('puts tests after real source files unless the question is about tests', async () => {
+    const { analysis } = makeFixture()
+    analysis.files['tests/test_cart.py'] = {
+      ...analysis.files['src/state/cart.ts'],
+      path: 'tests/test_cart.py',
+      dir: 'tests',
+      name: 'test_cart.py',
+      kind: 'test',
+      symbols: [
+        { name: 'test_cart_adds', kind: 'function', line: 1, exported: false },
+        { name: 'test_cart_removes', kind: 'function', line: 5, exported: false },
+        { name: 'test_cart_total', kind: 'function', line: 9, exported: false },
+      ],
+    }
+    analysis.files['tests/type_check/typing_cart.py'] = { ...analysis.files['tests/test_cart.py'], path: 'tests/type_check/typing_cart.py', kind: 'source' }
+    const picked = pickRelevantFiles(analysis, 'How does the cart work?')
+    expect(picked[0]).toBe('src/state/cart.ts')
+    expect(picked.indexOf('tests/test_cart.py')).toBeGreaterThan(picked.indexOf('src/state/cart.ts'))
+    expect(pickRelevantFiles(analysis, 'How is the cart tested?')[0]).toMatch(/^tests\//)
   })
 
   it('keeps at most the last 12 history messages', () => {
@@ -266,6 +316,28 @@ describe('buildCopyPrompt', () => {
     expect(p).toContain('## In one sentence')
     expect(p).toContain(CONTENTS['src/App.tsx'].split('\n')[0])
     expect(p.length).toBeLessThan(30_000 * 4 + 20_000)
+  })
+
+  it('attaches a concept’s files when they are not in the small context it embeds (even if Settings uses a bigger one)', async () => {
+    const ctx = makeCtx({ contextSize: 'large' })
+    const { apiKey: _k, model: _m, ...input } = ctx
+    // A file the big context has but the small one (used for copy prompts) doesn't.
+    const big = Array.from({ length: 50 }, (_, i) => `// filler line ${i} to make the project larger than the small context`).join('\n')
+    for (let i = 0; i < 40; i++) {
+      const p = `src/filler/f${i}.ts`
+      input.snapshot.files[p] = big
+      input.analysis.files[p] = { ...input.analysis.files['src/api/client.ts'], path: p, importedBy: Array.from({ length: 10 }, () => 'src/App.tsx') }
+    }
+    input.snapshot.files['src/late/deep.ts'] = 'export const sessionStore = new Map() // where sessions live'
+    input.analysis.files['src/late/deep.ts'] = { ...input.analysis.files['src/api/client.ts'], path: 'src/late/deep.ts' }
+    const small = new Set(getRepoContext(input.analysis, input.snapshot, 'small').includedFiles)
+    const large = new Set(getRepoContext(input.analysis, input.snapshot, 'large').includedFiles)
+    expect(small.has('src/late/deep.ts')).toBe(false)
+    expect(large.has('src/late/deep.ts')).toBe(true)
+    const concept = { id: 'sessions', name: 'Sessions', emoji: '🍪', category: 'process' as const, summary: 's', explanation: '', analogy: '', files: ['src/late/deep.ts'], importance: 4 }
+    const p = await buildCopyPrompt(input, { kind: 'concept', concept })
+    expect(p).toContain('<file path="src/late/deep.ts"')
+    expect(p).toContain('export const sessionStore')
   })
 
   it('asks for readable markdown for concept maps, tours and quizzes', async () => {

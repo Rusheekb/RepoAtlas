@@ -82,29 +82,69 @@ export function code(name: string): string {
 }
 
 /**
+ * Remove every `open … close` region in one pass (an unclosed one runs to the end), without backtracking.
+ * With `toTagEnd`, the region also swallows the rest of the closing tag ("</script >").
+ */
+function stripRegions(text: string, open: RegExp, close: (opened: string) => string, toTagEnd = false): string {
+  const lower = text.toLowerCase()
+  const re = new RegExp(open.source, open.flags.includes('g') ? open.flags : `${open.flags}g`)
+  let out = ''
+  let pos = 0
+  for (;;) {
+    re.lastIndex = pos
+    const m = re.exec(text)
+    if (!m) return out + text.slice(pos)
+    out += `${text.slice(pos, m.index)} `
+    const closer = close(m[0])
+    const end = lower.indexOf(closer, m.index + m[0].length)
+    if (end === -1) return out
+    pos = end + closer.length
+    if (toTagEnd) {
+      const gt = text.indexOf('>', pos)
+      if (gt !== -1 && gt - pos <= 20) pos = gt + 1
+    }
+  }
+}
+
+/**
  * Make untrusted text safe to embed in our own Markdown prose: strips HTML tags, images, link targets,
  * reference-style definitions, emphasis noise and line breaks. Links keep their visible text only.
+ * Every pattern is bounded, so a hostile README (100,000 "[" in a row) can't make it slow.
  */
 export function plainText(md: string): string {
-  return md
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]*)\]\[[^\]]*\]/g, '$1')
-    .replace(/^\s*\[[^\]]+\]:\s*\S+.*$/gm, ' ')
-    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
-    .replace(/^\s*>\s?/gm, '')
-    .replace(/`{1,3}/g, '')
-    .replace(/(\*\*|__)(.*?)\1/g, '$2')
-    .replace(/(^|\s)[*_]([^*_\n]+)[*_](?=\s|[.,;:!?]|$)/g, '$1$2')
-    .replace(/\|/g, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&(?:nbsp|quot|apos|lt|gt);|&#\d+;/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  const noComments = stripRegions(md, /<!--/, () => '-->')
+  const noScripts = stripRegions(noComments, /<(?:script|style)\b/i, (o) => `</${o.slice(1).toLowerCase()}`, true)
+  return (
+    noScripts
+      // reStructuredText links: `Werkzeug <https://…>`_ → Werkzeug (before tags, whose brackets look alike).
+      .replace(/`([^`<\n]{1,200}?)[ \t]*<[^>\n]{0,500}>`_{1,2}/g, '$1')
+      .replace(/<[^<>]{0,2000}>/g, ' ')
+      .replace(/!\[[^\]\n]{0,500}\]\([^)\n]{0,2000}\)/g, ' ')
+      .replace(/\[([^\]\n]{0,500})\]\([^)\n]{0,2000}\)/g, '$1')
+      .replace(/\[([^\]\n]{0,500})\]\[[^\]\n]{0,200}\]/g, '$1')
+      .replace(/^[ \t]*\[[^\]\n]{1,500}\]:[ \t]*\S+.*$/gm, ' ')
+      // Shortcut reference links ("a lightweight [WSGI] web application framework") keep just their text.
+      .replace(/\[([^\]\n]{1,200})\](?![(:])/g, '$1')
+      .replace(/:[a-z]{1,30}:`([^`\n]{1,200})`/g, '$1')
+      .replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, '')
+      .replace(/^[ \t]*>[ \t]?/gm, '')
+      .replace(/`{1,3}/g, '')
+      .replace(/(\*\*|__)([^\n]{0,500}?)\1/g, '$2')
+      .replace(/(^|[\s([“"'])[*_]([^*_\n]{1,500})[*_](?=[\s.,;:!?)\]”"']|$)/g, '$1$2')
+      .replace(/\|/g, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&(?:nbsp|quot|apos|lt|gt);|&#\d+;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  )
 }
+
+const INSTRUCTION_WORDS = String.raw`(?:install(?:ation|ing)?|set ?up|getting started|quick ?start|usage|how to (?:run|use|install|build)|develop(?:ment|ing)?|contribut(?:e|ing)|build(?:ing)?|requirements|prerequisites|running|run locally|local development)\b`
+/**
+ * A section heading ("## Installation") or an underlined one ("Install and run locally\n~~~~~~") that starts the how-to
+ * part. Top-level titles ("# build", "Title\n=====") are left alone: they are usually the project's name.
+ */
+const INSTRUCTIONS_HEADING = new RegExp(String.raw`^(?:#{2,6}[ \t]+${INSTRUCTION_WORDS}[^\n]*|[ \t]*${INSTRUCTION_WORDS}[^\n]*\n[ \t]*(?:-{3,}|~{3,}|\^{3,}|\*{3,}))`, 'im')
 
 /**
  * The first real paragraph of a README in plain text (skipping the title, badges, HTML blocks, tables of contents,
@@ -112,24 +152,51 @@ export function plainText(md: string): string {
  */
 export function readmeIntro(readme: string | null | undefined, maxChars = 320): string | null {
   if (!readme) return null
-  const withoutCode = readme.replace(/```[\s\S]*?```/g, '\n\n').replace(/~~~[\s\S]*?~~~/g, '\n\n')
-  const blocks = withoutCode.split(/\r?\n\s*\r?\n/)
+  const normalized = readme.replace(/\r\n?/g, '\n')
+  // Everything after an "Installation" / "Usage" / "Development" heading is instructions, not a description.
+  const steps = INSTRUCTIONS_HEADING.exec(normalized)
+  const withoutCode = (steps ? normalized.slice(0, steps.index) : normalized)
+    // Underlined titles ("ripgrep (rg)\n------------", reStructuredText "Install\n~~~~~~~") are headings, not prose.
+    // Done before code fences, so a "~~~~~~~" underline isn't mistaken for the start of a code block.
+    .replace(/^[ \t]*\S[^\n]*\n[ \t]*(?:={3,}|-{3,}|~{4,}|\^{3,}|\*{3,}|\+{3,}|#{3,})[ \t]*$/gm, '\n\n')
+    .replace(/^[ \t]*(?:={3,}|-{3,}|~{4,}|\^{3,}|\*{3,}|#{3,})[ \t]*$/gm, '\n\n')
+    .replace(/```[\s\S]*?```/g, '\n\n')
+    .replace(/~~~[\s\S]*?~~~/g, '\n\n')
+  const blocks = withoutCode.split(/\n[ \t]*\n/)
   for (const block of blocks) {
     const b = block.trim()
     if (!b) continue
+    // Indented blocks are code (Markdown indented code, reStructuredText "::" literal blocks), and so are shell commands.
+    if (block.split('\n').every((l) => !l.trim() || /^(?: {4}|\t)/.test(l))) continue
+    if (/^(?:\$ |pip3? |python3? -m |npm |yarn |pnpm |npx |bun |cargo |go (?:get|install|run) |git clone |docker |make |brew |curl |wget )/.test(b)) continue
     if (/^(#|=+$|-+$|\||- |\* |\+ |\d+\.\s|>?\s*\[!)/.test(b)) continue // headings, rules, tables, lists, callouts
-    if (/^\s*(\[!\[|!\[|<)/.test(b) && plainText(b).length < 40) continue // badges / pure HTML
-    const text = plainText(b.replace(/^>\s?/gm, ''))
+    if (/^\.\.[ \t]+[\w|-]/.test(b) || /^:[\w-]+:/.test(b)) continue // reStructuredText directives (.. image::) and field lists
+    if (/^\s*(\[!\[|!\[|<)/.test(b) && plainText(b.slice(0, 6000)).length < 40) continue // badges / pure HTML
+    if (/^<h[1-6]\b|^<nav\b/i.test(b) || isLinkList(b.slice(0, 6000))) continue // HTML titles and rows of links (Editor | Blog | Docs)
+    // A real intro paragraph is short; only its start matters (and huge blocks stay cheap to clean).
+    const text = plainText(b.slice(0, 6000).replace(/^>[ \t]?/gm, ''))
     if (text.length < 25) continue
     if (!/[a-z]{3,}/i.test(text) || /^(table of contents|contents|toc)\b/i.test(text)) continue
     // News, banners and housekeeping notes don't describe the project.
-    if (/\b(announc\w*|we['’]re excited|we are excited|is now available|new release|release notes|sponsor\w*|deprecated|no longer maintained|looking for maintainers|breaking changes?|star (us|this repo)|join our|discord server|hiring)\b/i.test(text)) continue
+    if (/\b(announc\w*|we['’]re excited|we are excited|(?:is |are )?now available|new release|release notes|sponsor\w*|deprecated|no longer maintained|looking for maintainers|breaking changes?|star (us|this repo)|join our|discord server|hiring|t-shirts?|merch(?:andise)?|stickers)\b/i.test(text)) continue
+    if (/^(?:note|notes|warning|caution|important|tip|update|disclaimer|todo)\b\s*[:!-]/i.test(text)) continue
+    // A lead-in to a list or a command ("To run locally, you can either:") or a pointer elsewhere ("See the slides here").
+    if (/:$/.test(text) || /^(?:see|check out|watch|read|visit|click)\b[^.]{0,120}\b(?:here|below|slides|presentation|video|website|docs|documentation)\b/i.test(text)) continue
     // Mostly words, not a wall of links or symbols.
     const letters = (text.match(/[a-z]/gi) ?? []).length
     if (letters / text.length < 0.55) continue
     return truncateChars(text, maxChars)
   }
   return null
+}
+
+/** Whether a README block is mostly link text (a row of navigation links), not a sentence about the project. */
+function isLinkList(block: string): boolean {
+  const links = [...block.matchAll(/<a\b[^<>]{0,1000}>([^<]{0,300})<\/a>|\[([^\]\n]{1,300})\]\([^)\n]{0,2000}\)/gi)]
+  if (links.length < 3) return false
+  const linkLetters = links.map((m) => m[1] ?? m[2] ?? '').join(' ').replace(/[^a-z]/gi, '').length
+  const allLetters = plainText(block).replace(/[^a-z]/gi, '').length
+  return allLetters > 0 && linkLetters >= allLetters * 0.6
 }
 
 /** Words of an identifier: "UserProfileCard" → ["user","profile","card"], "user_profile-card" → same. */

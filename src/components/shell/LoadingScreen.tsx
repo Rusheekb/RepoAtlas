@@ -35,6 +35,20 @@ export function overallPercent(progress: LoadProgress | null): number {
 
 const TIP_INTERVAL_MS = 7000
 
+/**
+ * What screen readers hear: one message per stage. Counting messages ("Reading 12 of 223 files…") change for every file,
+ * so they are shown on screen only and the stage name is announced instead. Exported for tests.
+ */
+export function announcement(progress: LoadProgress | null): string {
+  if (!progress) return 'Getting started…'
+  if (progress.stage === 'done') return progress.message || 'Ready!'
+  if (progress.done != null && progress.total != null) {
+    const stage = STAGES.find((s) => s.id === progress.stage)
+    return stage ? `${stage.label}…` : progress.message
+  }
+  return progress.message
+}
+
 /** Shown while a repository downloads and is analyzed: stage list, live status, progress bar and rotating tips. */
 export function LoadingScreen({ progress, repoLabel }: { progress: LoadProgress | null; repoLabel: string }) {
   const stage: LoadStage = progress?.stage ?? 'meta'
@@ -76,8 +90,11 @@ export function LoadingScreen({ progress, repoLabel }: { progress: LoadProgress 
           >
             <div className="h-full rounded-full bg-brand transition-[width] duration-500 ease-out" style={{ width: `${Math.max(4, percent)}%` }} />
           </div>
-          <p className="mt-3 min-h-5 text-sm font-medium text-ink" aria-live="polite" data-testid="loading-message">
+          <p className="mt-3 min-h-5 text-sm font-medium text-ink" aria-hidden data-testid="loading-message">
             {progress?.message ?? 'Getting started…'}
+          </p>
+          <p className="sr-only" role="status" aria-live="polite" data-testid="loading-announcement">
+            {announcement(progress)}
           </p>
 
           <ol className="mt-5 space-y-3" aria-label="Steps">

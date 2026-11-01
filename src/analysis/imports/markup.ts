@@ -8,6 +8,7 @@ import {
   isNonFileReference,
   keepRanges,
   matchAll,
+  untilTerminator,
   type ImportSink,
   type Source,
 } from './util'
@@ -17,7 +18,7 @@ import {
 const CSS_AT = /@(import|use|forward|require|config|plugin|reference)\b([^;\n{]*)/dg
 const QUOTED = /(['"])( *)\1/dg
 const URL_BARE = /url\(\s*([^'")\s]+)\s*\)/dg
-const COMPOSES = /\bcomposes\s*:[^;]*?\bfrom\s+(['"])( *)\1/dg
+const COMPOSES = /\bcomposes\s*:[^;]{0,1000}?\bfrom\s+(['"])( *)\1/dg
 
 /**
  * CSS-family: @import (quoted, url(), comma lists, Less options), @use/@forward, Tailwind @config/@plugin, CSS-modules
@@ -58,8 +59,12 @@ export function extractCss(src: Source, sink: ImportSink): void {
 
 // ─── HTML ────────────────────────────────────────────────────────────────────
 
-const LINK_TAG = /<link\b([^>]*)>/dgi
-const SCRIPT_SRC_TAG = /<script\b([^>]*)>/dgi
+/** Longest attribute list read from one tag. */
+const MAX_TAG = 4000
+
+/** Tag openers; the attributes run to the next ">" (read with untilTerminator, so many unclosed tags stay fast). */
+const LINK_TAG = /<link\b/gi
+const SCRIPT_SRC_TAG = /<script\b/gi
 
 function viewsFor(raw: string, language: string, ranges: [number, number][]): Source {
   const kept = keepRanges(raw, ranges)
@@ -89,15 +94,15 @@ function embedded(src: Source, sink: ImportSink, onlyScripts = false): void {
 /** HTML: <script src>, <link rel="stylesheet|modulepreload|preload|manifest" href>, inline module scripts and styles. */
 export function extractHtml(src: Source, sink: ImportSink): void {
   const { text } = src
-  for (const m of matchAll(SCRIPT_SRC_TAG, text)) {
-    const value = attrValue(m[1], 'src')
-    if (value && !isNonFileReference(value)) sink.add(value, m.index, 'script')
+  for (const { head, body } of untilTerminator(text, SCRIPT_SRC_TAG, '>', MAX_TAG)) {
+    const value = attrValue(body, 'src')
+    if (value && !isNonFileReference(value)) sink.add(value, head.index, 'script')
   }
-  for (const m of matchAll(LINK_TAG, text)) {
-    const rel = (attrValue(m[1], 'rel') ?? '').toLowerCase()
+  for (const { head, body } of untilTerminator(text, LINK_TAG, '>', MAX_TAG)) {
+    const rel = (attrValue(body, 'rel') ?? '').toLowerCase()
     if (!/\b(stylesheet|modulepreload|preload|manifest|import)\b/.test(rel)) continue
-    const href = attrValue(m[1], 'href')
-    if (href && !isNonFileReference(href)) sink.add(href, m.index, rel.includes('stylesheet') ? 'stylesheet' : 'link')
+    const href = attrValue(body, 'href')
+    if (href && !isNonFileReference(href)) sink.add(href, head.index, rel.includes('stylesheet') ? 'stylesheet' : 'link')
   }
   embedded(src, sink)
 }
@@ -151,12 +156,17 @@ export function extractMdx(src: Source, sink: ImportSink): void {
   const re = /^(?:import|export)\b[^\n]*(?:\n(?![ \t]*\n)(?!#)[^\n]*)*/gm
   let inFence = false
   let pos = 0
+  // Lines already inside an earlier statement are not re-read (that would be quadratic on a file of export lines).
+  let covered = 0
   for (const line of raw.split('\n')) {
-    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence
-    if (!inFence && /^(?:import|export)\b/.test(line)) {
+    if (/^[ \t]*(```|~~~)/.test(line)) inFence = !inFence
+    if (!inFence && pos >= covered && /^(?:import|export)\b/.test(line)) {
       re.lastIndex = pos
       const m = re.exec(raw)
-      if (m && m.index === pos) ranges.push([pos, pos + m[0].length])
+      if (m && m.index === pos) {
+        ranges.push([pos, pos + m[0].length])
+        covered = pos + m[0].length
+      }
     }
     pos += line.length + 1
   }

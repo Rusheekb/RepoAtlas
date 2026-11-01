@@ -69,7 +69,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           placeholder={placeholder}
           disabled={disabled}
           maxLength={4000}
-          className="max-h-[200px] min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] leading-6 text-ink outline-none placeholder:text-ink-3 focus-visible:outline-none"
+          className="max-h-[200px] min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] leading-6 text-ink placeholder:text-ink-3 focus-visible:outline-hidden"
         />
         {busy ? (
           <button

@@ -8,6 +8,13 @@ export interface RepoContext {
   text: string
   includedFiles: string[]
   approxTokens: number
+  /** For every included file: how many of its lines the context shows (from the top) out of how many. */
+  coverage: Record<string, FileCoverage>
+}
+
+export interface FileCoverage {
+  shownLines: number
+  totalLines: number
 }
 
 /** Rough characters per token used for budgeting (matches estimateTokens in src/core/format.ts). */
@@ -128,12 +135,35 @@ function manifestRank(path: string): number {
 
 const MAX_LINE = 1000
 
-/** Neutralize closing tags that would let file content "escape" the data wrappers. */
+/** Every tag RepoAtlas wraps prompt material in. Repository text must never be able to close one of them. */
+export const WRAPPER_TAGS = [
+  'repository',
+  'file',
+  'readme',
+  'manifests',
+  'source_files',
+  'file_tree',
+  'overview',
+  'modules',
+  'entry_points',
+  'hubs',
+  'code',
+  'relevant_files',
+  'what_we_know',
+  'task',
+  'question',
+  'reading_level',
+] as const
+
+const CLOSING_TAG = new RegExp(`<\\s*/\\s*(${WRAPPER_TAGS.join('|')})\\s*>`, 'gi')
+
+/**
+ * Neutralize closing tags that would let untrusted text (file content, but also descriptions, paths, module names,
+ * routes …) "escape" the data wrappers: `</repository>` becomes `<\/repository>`. Everything else is left exactly as
+ * it is, so code Claude quotes still matches the real file.
+ */
 export function neutralize(content: string): string {
-  return content.replace(
-    /<\/(repository|file|readme|manifests|source_files|file_tree|overview|modules|entry_points|hubs|code|relevant_files)\s*>/gi,
-    '<\\/$1>',
-  )
+  return content.replace(CLOSING_TAG, (_m, tag: string) => `<\\/${tag}>`)
 }
 
 export function splitLines(content: string): string[] {
@@ -172,15 +202,47 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n))
 }
 
-function attr(value: string): string {
+/** Escape a value for use inside a double-quoted tag attribute (paths, names …). */
+export function attr(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 /** Render a file in the shared <file path lines> wrapper, truncating to maxChars. */
-export function renderFileBlock(path: string, content: string, maxChars: number): { block: string; truncated: boolean } {
+export function renderFileBlock(
+  path: string,
+  content: string,
+  maxChars: number,
+): { block: string; truncated: boolean; shownLines: number; totalLines: number } {
   const { text, omitted, total } = truncateLines(neutralize(content), maxChars)
   const body = omitted > 0 ? `${text}\n${truncatedMarker(omitted)}` : text
-  return { block: `<file path="${attr(path)}" lines="${total}">\n${body}\n</file>`, truncated: omitted > 0 }
+  return {
+    block: `<file path="${attr(path)}" lines="${total}">\n${body}\n</file>`,
+    truncated: omitted > 0,
+    shownLines: total - omitted,
+    totalLines: total,
+  }
+}
+
+/**
+ * The rest of a file, from line `fromLine` on (the lines before it are already in the shared context), in the same
+ * <file> wrapper, truncated to maxChars.
+ */
+export function renderFileRest(path: string, content: string, fromLine: number, maxChars: number): { block: string; truncated: boolean } {
+  const lines = splitLines(neutralize(content))
+  const start = Math.max(1, Math.min(Math.floor(fromLine), lines.length))
+  if (start <= 1) return renderFileBlock(path, content, maxChars)
+  const { text, omitted } = truncateLines(lines.slice(start - 1).join('\n'), maxChars)
+  const body = omitted > 0 ? `${text}\n${truncatedMarker(omitted)}` : text
+  const note = `(Lines 1–${start - 1} of this file are already in the project material above; this continues from line ${start}.)`
+  return {
+    block: `<file path="${attr(path)}" lines="${lines.length}" from_line="${start}">\n${note}\n${body}\n</file>`,
+    truncated: omitted > 0,
+  }
+}
+
+/** `<tag>` + untrusted lines (neutralized) + `</tag>`. */
+function wrapSection(open: string, close: string, lines: string[]): string {
+  return `${open}\n${neutralize(lines.join('\n'))}\n${close}`
 }
 
 /** Cut a finished section to `max` characters at a line boundary (keeps the result within budget). */
@@ -198,7 +260,7 @@ function capSection(text: string, max: number, closing?: string): string {
 
 function overviewSection(a: RepoAnalysis): string {
   const m = a.meta
-  const lines: string[] = ['<overview>']
+  const lines: string[] = []
   if (m.description) lines.push(`Description: ${m.description}`)
   if (m.homepage) lines.push(`Homepage: ${m.homepage}`)
   if (m.topics.length) lines.push(`Topics: ${[...m.topics].sort().join(', ')}`)
@@ -222,12 +284,11 @@ function overviewSection(a: RepoAnalysis): string {
     `Size: ${s.totalFiles} files (${s.analyzedFiles} read), ${s.totalLines} lines in the files read, ` +
       `${s.sourceFiles} source files, ${s.testFiles} test files, ${s.folderCount} folders, ${s.externalPackages} outside packages.`,
   )
-  lines.push('</overview>')
-  return lines.join('\n')
+  return wrapSection('<overview>', '</overview>', lines)
 }
 
 function modulesSection(a: RepoAnalysis): string {
-  const lines: string[] = ['<modules>', 'The main parts of the project (id = folder path; "(root)" = loose files at the top level):']
+  const lines: string[] = ['The main parts of the project (id = folder path; "(root)" = loose files at the top level):']
   const mods = [...a.modules].sort((x, y) => y.lines - x.lines || x.id.localeCompare(y.id))
   for (const m of mods) {
     const layer = LAYER_INFO[m.layer]?.label ?? m.layer
@@ -246,25 +307,23 @@ function modulesSection(a: RepoAnalysis): string {
     for (const e of edges.slice(0, 80)) lines.push(`- ${e.source} uses ${e.target} (${e.weight})`)
     if (edges.length > 80) lines.push(`- … and ${edges.length - 80} smaller connections`)
   }
-  lines.push('</modules>')
-  return lines.join('\n')
+  return wrapSection('<modules>', '</modules>', lines)
 }
 
 function entryHubSection(a: RepoAnalysis): string {
-  const lines: string[] = ['<entry_points>']
+  const entries: string[] = []
   for (const p of a.entryPoints.slice(0, 15)) {
     const reason = a.files[p]?.entryReason
-    lines.push(`- ${p}${reason ? ` — ${reason}` : ''}`)
+    entries.push(`- ${p}${reason ? ` — ${reason}` : ''}`)
   }
-  if (!a.entryPoints.length) lines.push('(none found automatically)')
-  lines.push('</entry_points>', '<hubs>')
+  if (!a.entryPoints.length) entries.push('(none found automatically)')
+  const hubs: string[] = []
   for (const p of a.hubs.slice(0, 15)) {
     const n = a.files[p]?.importedBy.length ?? 0
-    lines.push(`- ${p} (used by ${n} file${n === 1 ? '' : 's'})`)
+    hubs.push(`- ${p} (used by ${n} file${n === 1 ? '' : 's'})`)
   }
-  if (!a.hubs.length) lines.push('(none found automatically)')
-  lines.push('</hubs>')
-  return lines.join('\n')
+  if (!a.hubs.length) hubs.push('(none found automatically)')
+  return `${wrapSection('<entry_points>', '</entry_points>', entries)}\n${wrapSection('<hubs>', '</hubs>', hubs)}`
 }
 
 // ── File tree ────────────────────────────────────────────────────────────────
@@ -419,15 +478,15 @@ function treeSection(a: RepoAnalysis, snapshot: RepoSnapshot, maxChars: number):
     if (len <= room || count === 0) break
     count = Math.max(0, Math.min(count - 1, Math.floor((count * room) / len * 0.95)))
   }
-  let body = lines.join('\n')
+  let body = neutralize(lines.join('\n'))
   if (body.length > room) body = capSection(body, room)
   return `${header}\n${body}\n${footer}`
 }
 
 // ── README & manifests ───────────────────────────────────────────────────────
 
-function readmeSection(a: RepoAnalysis, maxChars: number): { text: string; path: string | null } {
-  if (!a.readme?.content.trim()) return { text: '', path: null }
+function readmeSection(a: RepoAnalysis, maxChars: number): { text: string; path: string | null; complete: boolean } {
+  if (!a.readme?.content.trim()) return { text: '', path: null, complete: false }
   const cleaned = a.readme.content
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/\n{3,}/g, '\n\n')
@@ -436,29 +495,35 @@ function readmeSection(a: RepoAnalysis, maxChars: number): { text: string; path:
   const close = '</readme>'
   const { text, omitted } = truncateLines(neutralize(cleaned), Math.max(200, maxChars - open.length - close.length - 60))
   const body = omitted > 0 ? `${text}\n${truncatedMarker(omitted)}` : text
-  return { text: `${open}\n${body}\n${close}`, path: a.readme.path }
+  return { text: `${open}\n${body}\n${close}`, path: a.readme.path, complete: omitted === 0 }
 }
 
-function manifestSection(snapshot: RepoSnapshot, maxChars: number, perFile: number): { text: string; included: string[] } {
+function manifestSection(
+  snapshot: RepoSnapshot,
+  maxChars: number,
+  perFile: number,
+): { text: string; included: string[]; coverage: Record<string, FileCoverage> } {
   const candidates = Object.keys(snapshot.files)
     .filter((p) => isManifest(p) && !isLockfile(p))
     .sort((x, y) => depthOf(x) - depthOf(y) || manifestRank(x) - manifestRank(y) || (x < y ? -1 : x > y ? 1 : 0))
     .slice(0, 16)
-  if (!candidates.length) return { text: '', included: [] }
+  const coverage: Record<string, FileCoverage> = {}
+  if (!candidates.length) return { text: '', included: [], coverage }
   const parts: string[] = ['<manifests>']
   let used = parts[0].length + '</manifests>'.length + 2
   const included: string[] = []
   for (const p of candidates) {
     const room = Math.min(perFile, maxChars - used - 60)
     if (room < 300) break
-    const { block } = renderFileBlock(p, snapshot.files[p], room)
+    const { block, shownLines, totalLines } = renderFileBlock(p, snapshot.files[p], room)
     parts.push(block)
     used += block.length + 1
     included.push(p)
+    coverage[p] = { shownLines, totalLines }
   }
-  if (!included.length) return { text: '', included: [] }
+  if (!included.length) return { text: '', included: [], coverage: {} }
   parts.push('</manifests>')
-  return { text: parts.join('\n'), included }
+  return { text: parts.join('\n'), included, coverage }
 }
 
 // ── Source files ─────────────────────────────────────────────────────────────
@@ -554,13 +619,20 @@ export function buildRepoContext(analysis: RepoAnalysis, snapshot: RepoSnapshot,
   push(capSection(entryHubSection(analysis), Math.floor(budget * 0.02), '</hubs>'))
   push(treeSection(analysis, snapshot, Math.floor(budget * SHARE.tree)))
 
+  const coverage: Record<string, FileCoverage> = Object.create(null) as Record<string, FileCoverage>
   const readme = readmeSection(analysis, Math.floor(budget * SHARE.readme))
   push(readme.text)
-  if (readme.path) included.push(readme.path)
+  if (readme.path) {
+    included.push(readme.path)
+    // The README is shown cleaned up (comments removed), so only a complete one counts as "already there".
+    const total = splitLines(snapshot.files[readme.path] ?? analysis.readme?.content ?? '').length
+    if (readme.complete) coverage[readme.path] = { shownLines: total, totalLines: total }
+  }
 
   const manifests = manifestSection(snapshot, Math.floor(budget * SHARE.manifests), clamp(Math.floor(budget * 0.015), 3000, 10000))
   push(manifests.text)
   included.push(...manifests.included)
+  Object.assign(coverage, manifests.coverage)
 
   const exclude = new Set<string>(included)
   const order = sourceOrder(analysis, snapshot, exclude)
@@ -575,17 +647,18 @@ export function buildRepoContext(analysis: RepoAnalysis, snapshot: RepoSnapshot,
     const overhead = path.length + 60
     const cap = Math.min(priority ? priorityCap : restCap, remaining - overhead)
     if (cap < 300) continue
-    const { block } = renderFileBlock(path, snapshot.files[path], cap)
+    const { block, shownLines, totalLines } = renderFileBlock(path, snapshot.files[path], cap)
     if (block.length + 1 > remaining) continue
     blocks.push(block)
     included.push(path)
+    coverage[path] = { shownLines, totalLines }
     remaining -= block.length + 1
   }
   if (blocks.length) push(`${srcOpen}\n${blocks.join('\n')}\n${srcClose}`)
 
   parts.push(close)
   const text = parts.join('\n')
-  return { text, includedFiles: included, approxTokens: estimateTokens(text) }
+  return { text, includedFiles: included, approxTokens: estimateTokens(text), coverage }
 }
 
 const memo = new WeakMap<RepoAnalysis, WeakMap<RepoSnapshot, Map<ContextSize, RepoContext>>>()

@@ -1,7 +1,7 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { makeFile } from '@/ai/testFixtures'
-import { FileTree } from './FileTree'
+import { FileTree, MAX_SEARCH_ROWS } from './FileTree'
 
 const FILES = [
   makeFile('src/main.ts', { role: 'entry', isEntry: true, layer: 'ui' }),
@@ -124,5 +124,19 @@ describe('FileTree', () => {
     // 40 folders + the open folder's first page of files + its "show more" row.
     expect(rows.length).toBeLessThan(300)
     expect(screen.getByRole('treeitem', { name: /Show 50 more files/ })).toBeInTheDocument()
+  })
+
+  it('caps search results at a few hundred rows, so each keystroke stays quick on big projects', () => {
+    expect(MAX_SEARCH_ROWS).toBeLessThanOrEqual(300)
+    const big = Array.from({ length: 5_000 }, (_, i) => makeFile(`services/svc${i % 20}/handler${i}.ts`))
+    render(<FileTree files={big} onSelect={() => {}} query="handler" />)
+    expect(screen.getAllByRole('treeitem')).toHaveLength(MAX_SEARCH_ROWS)
+    expect(screen.getByText(/showing the first/i)).toBeInTheDocument()
+  })
+
+  it('uses matches the caller already found instead of filtering again', () => {
+    // The caller's list wins (here it deliberately disagrees with the query, to show the tree didn't filter itself).
+    render(<FileTree files={FILES} onSelect={() => {}} query="cart" matches={[FILES[3]]} />)
+    expect(names()).toEqual(['src/api', 'client.ts'])
   })
 })

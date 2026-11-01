@@ -38,7 +38,7 @@ export class GoResolver {
     for (const p of repo.byBasename('go.mod')) {
       const dir = dirname(p)
       const text = repo.content(p)
-      const declared = text ? /^\s*module\s+"?([^\s"]+)"?/m.exec(text)?.[1] : undefined
+      const declared = text ? /^[ \t]*module[ \t]+"?([^\s"]+)"?/m.exec(text)?.[1] : undefined
       const modPath = declared ?? (dir === '' ? this.rootModulePath : undefined)
       if (modPath) {
         out.push({ path: modPath, dir })
@@ -46,7 +46,8 @@ export class GoResolver {
       }
       if (text) {
         // replace example.com/x => ./local/x   (single-line and block forms)
-        for (const m of text.matchAll(/^\s*(?:replace\s+)?([^\s()]+)(?:\s+v[^\s]+)?\s*=>\s*(\.{1,2}\/[^\s]*)\s*$/gm)) {
+        // Line by line, with [ \t] instead of \s, so a go.mod full of blank lines cannot make the pattern backtrack.
+        for (const m of text.matchAll(/^[ \t]*(?:replace[ \t]+)?([^\s()]+)(?:[ \t]+v[^\s]+)?[ \t]*=>[ \t]*(\.{1,2}\/[^\s]*)[ \t]*\r?$/gm)) {
           const target = joinPath(dir, m[2])
           if (repo.isDir(target)) out.push({ path: m[1], dir: target })
         }

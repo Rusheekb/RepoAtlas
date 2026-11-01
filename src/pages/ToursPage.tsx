@@ -202,6 +202,7 @@ export default function ToursPage() {
         error={ai.error}
         errorKind={ai.errorKind}
         hasData={aiTours.length > 0}
+        stale={Boolean(ai.stale)}
         onGenerate={ai.run}
         onCancel={ai.cancel}
         generateLabel="Generate tours with Claude"

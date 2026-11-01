@@ -74,9 +74,16 @@ export function moduleFiles(module: ModuleInfo, files: Record<string, AnalyzedFi
   return out
 }
 
-/** Layers present among the modules, in the fixed palette order. */
+/**
+ * Layers whose color appears on the map, in the fixed palette order: each part's main layer plus every layer its
+ * mini bar draws (so the legend explains every color on the cards).
+ */
 export function presentLayers(modules: readonly ModuleInfo[]): Layer[] {
-  const present = new Set(modules.map((m) => m.layer))
+  const present = new Set<Layer>()
+  for (const m of modules) {
+    present.add(m.layer)
+    for (const l of LAYERS) if ((m.layerBreakdown?.[l] ?? 0) > 0) present.add(l)
+  }
   return LAYERS.filter((l) => present.has(l))
 }
 
@@ -146,12 +153,27 @@ export function bestFitDirection(
   },
 ): 'LR' | 'TB' {
   if (modules.length <= 1) return 'TB'
+  return betterDirection(box, (direction) => boundsOf(layout(modules, edges, direction).nodes))
+}
+
+/**
+ * Of two layouts (sideways, top-down), the one that can be drawn bigger in the box. Ties (within 5%) go to
+ * top-down, which suits narrow columns; `prefer` breaks the tie instead when given.
+ */
+export function betterDirection(
+  box: { width: number; height: number },
+  sizeOf: (direction: 'LR' | 'TB') => { width: number; height: number },
+  prefer: 'LR' | 'TB' = 'TB',
+): 'LR' | 'TB' {
   const scale = (direction: 'LR' | 'TB') => {
-    const b = boundsOf(layout(modules, edges, direction).nodes)
+    const b = sizeOf(direction)
     if (b.width <= 0 || b.height <= 0) return Infinity
     return Math.min(box.width / b.width, box.height / b.height)
   }
-  return scale('LR') > scale('TB') * 1.05 ? 'LR' : 'TB'
+  const lr = scale('LR')
+  const tb = scale('TB')
+  if (prefer === 'LR') return tb > lr * 1.05 ? 'TB' : 'LR'
+  return lr > tb * 1.05 ? 'LR' : 'TB'
 }
 
 /** How many distinct files outside `inside` use, or are used by, those files. */

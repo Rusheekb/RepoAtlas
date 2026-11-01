@@ -4,7 +4,11 @@
  * actually go over the wire, SSE parsing, structured-output parsing and HTTP error mapping.
  */
 import { z } from 'zod'
+import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { generateStructured, streamText, type ClaudeRequest } from './client'
+import { ConceptMapSchema } from './schemas'
+import { validateConceptMap } from './validate'
+import { makeFixture } from './testFixtures'
 
 function sse(events: Record<string, unknown>[]): string {
   return events.map((e) => `event: ${String(e.type)}\ndata: ${JSON.stringify(e)}\n\n`).join('')
@@ -115,6 +119,32 @@ describe('client with the real SDK', () => {
   it('maps a structured refusal to "refused"', async () => {
     stubFetch(() => new Response(sse(messageEvents('{"ite', 'refusal')), { headers: { 'content-type': 'text/event-stream' } }))
     await expect(generateStructured(req(), z.object({ items: z.array(z.string()) }))).rejects.toMatchObject({ kind: 'refused' })
+  })
+
+  it('a mid-stream "overloaded" error says Claude is busy (and rate limits say so too)', async () => {
+    const partial = (type: string) =>
+      sse(messageEvents('Hello world').slice(0, 6)) + `event: error\ndata: ${JSON.stringify({ type: 'error', error: { type, message: 'x' } })}\n\n`
+    stubFetch(() => new Response(partial('overloaded_error'), { headers: { 'content-type': 'text/event-stream' } }))
+    await expect(streamText(req())).rejects.toMatchObject({ kind: 'overloaded', message: expect.stringMatching(/very busy/) })
+    stubFetch(() => new Response(partial('api_error'), { headers: { 'content-type': 'text/event-stream' } }))
+    await expect(streamText(req())).rejects.toMatchObject({ kind: 'overloaded' })
+    stubFetch(() => new Response(partial('rate_limit_error'), { headers: { 'content-type': 'text/event-stream' } }))
+    await expect(streamText(req())).rejects.toMatchObject({ kind: 'rate-limited' })
+  })
+
+  it('one off-list concept category no longer throws away the whole concept map', async () => {
+    const concept = (id: string, category: string) => ({ id, name: id, emoji: '💡', category, summary: 's', explanation: 'e', analogy: 'a', files: [], importance: 3 })
+    const map = {
+      concepts: [concept('a', 'data'), concept('b', 'Technology'), concept('c', 'design pattern'), concept('d', 'tools'), concept('e', 'whatever')],
+      relations: [],
+    }
+    stubFetch(() => new Response(sse(messageEvents(JSON.stringify(map))), { headers: { 'content-type': 'text/event-stream' } }))
+    const { data } = await generateStructured(req(), ConceptMapSchema)
+    const { analysis, snapshot } = makeFixture()
+    expect(validateConceptMap(data, analysis, snapshot).concepts.map((c) => c.category)).toEqual(['data', 'technology', 'idea', 'technology', 'idea'])
+    // The six categories are still described to Claude.
+    const format = betaZodOutputFormat(ConceptMapSchema) as unknown as { schema: unknown }
+    expect(JSON.stringify(format.schema)).toContain('Exactly one of: data, feature, process, actor, technology, idea')
   })
 
   it('maps HTTP errors to friendly kinds', async () => {

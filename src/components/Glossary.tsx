@@ -125,6 +125,9 @@ function TermTrigger({ term, children, className }: { term: GlossaryTerm; childr
   }
 
   const learnMore = () => {
+    // Hand focus back to the word first: the explain panel remembers what had focus when it opened and returns there
+    // when it closes, and the "Learn more" button is about to disappear with the popover.
+    triggerRef.current?.focus({ preventScroll: true })
     hide()
     openExplain({ type: 'term', id: term.id })
   }

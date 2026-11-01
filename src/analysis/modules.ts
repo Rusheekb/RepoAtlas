@@ -3,9 +3,9 @@ import { LAYERS, ROOT_MODULE_ID } from '@/core/types'
 import { LAYER_INFO, ROLE_INFO } from '@/core/labels'
 import { formatCompact } from '@/core/format'
 import { basename, dirname } from '@/core/paths'
-import { describeFolder } from '@/knowledge'
+import { describeFolder, docsSiteRoots, type FolderRole } from '@/knowledge'
 import { count, listJoin, safeName, sentence } from './structure/text'
-import { zonesOf, type Zone } from './structure/zones'
+import { isWrapperScript, zonesOf, type Zone } from './structure/zones'
 import { dict } from '@/core/dict'
 
 export interface BuildModulesOptions {
@@ -13,6 +13,11 @@ export interface BuildModulesOptions {
   workspaces?: string[]
   /** The project's name, used to label the top-level module when the main code lives right at the root. */
   projectName?: string
+  /**
+   * Ids of the technologies found in the project. Folder names that only mean something with a certain technology
+   * ("renderer" → an Electron window, "scenes" → a game's levels) are checked against them.
+   */
+  techIds?: ReadonlySet<string> | readonly string[]
 }
 
 /** Aim for a readable map. */
@@ -120,22 +125,45 @@ function modWeight(m: Mod): number {
 const PERIPHERAL_LAYERS = new Set<Layer>(['test', 'docs', 'other', 'infra', 'config'])
 
 /**
- * The layer that best describes a group of files, by lines. When a folder mixes real code with its tests or docs
- * (Go keeps tests next to the code), the real code decides — as long as it is a meaningful share.
+ * Paperwork every package carries — change logs, licences, the README, its package manifest. A changesets-managed
+ * package's CHANGELOG.md soon outgrows its code, but it says nothing about what the package is.
  */
-function dominantLayerOf(files: AnalyzedFile[]): Layer {
+const PAPERWORK_NAME =
+  /^(?:changelog|changes|history|news|releases?|license|licence|copying|unlicense|notice|authors|contributors|code_of_conduct|contributing|security|support|readme|funding)(?:[._-][\w.-]*)?$|^(?:package\.json|cargo\.toml|pyproject\.toml|setup\.cfg|go\.mod|go\.sum|composer\.json|pom\.xml|build\.gradle(?:\.kts)?|[\w.-]+\.gemspec|[\w.-]+\.csproj|tsconfig(?:\.[\w-]+)?\.json|deno\.jsonc?)$/i
+
+/**
+ * The layer that best describes a group of files, by lines. When a folder mixes real code with its tests or docs
+ * (Go keeps tests next to the code), the real code decides — as long as it is a meaningful share. In a folder with
+ * source code, its paperwork (CHANGELOG, LICENSE, README, manifest), test fixtures and data files don't vote: a
+ * single huge JSON fixture or change log must not turn a code package into "test" or "Documents".
+ */
+function dominantLayerOf(files: AnalyzedFile[], codeDecides = true): Layer {
+  const hasCode = files.some((f) => f.kind === 'source' && fileLines(f) > 0)
+  const voters = hasCode && codeDecides
+    ? files.filter((f) => !(f.role === 'fixture' || f.kind === 'data' || f.kind === 'asset' || isWrapperScript(f.path) || (f.kind !== 'source' && f.kind !== 'test' && PAPERWORK_NAME.test(f.name))))
+    : files
+  // When the folder's own code is a real share of it, the code alone decides: a long test file next to a small
+  // package (changesets' config/) doesn't make the package "tests".
+  let codeLines = 0
+  let allLines = 0
+  for (const f of voters) {
+    const l = fileLines(f)
+    allLines += l
+    if (WRITTEN_CODE_KINDS.has(f.kind)) codeLines += l
+  }
+  const pool = codeDecides && hasCode && codeLines >= allLines * 0.12 ? voters.filter((f) => WRITTEN_CODE_KINDS.has(f.kind)) : voters
   const by = new Map<Layer, number>()
   let total = 0
-  for (const f of files) {
+  for (const f of pool) {
     const w = fileLines(f) + 0.01
     by.set(f.layer, (by.get(f.layer) ?? 0) + w)
     total += w
   }
   const coreTotal = LAYERS.filter((l) => !PERIPHERAL_LAYERS.has(l)).reduce((s, l) => s + (by.get(l) ?? 0), 0)
-  const pool = coreTotal >= total * 0.12 ? LAYERS.filter((l) => !PERIPHERAL_LAYERS.has(l)) : LAYERS
+  const layers = coreTotal >= total * 0.12 ? LAYERS.filter((l) => !PERIPHERAL_LAYERS.has(l)) : LAYERS
   let best: Layer = 'other'
   let bestW = -1
-  for (const layer of pool) {
+  for (const layer of layers) {
     const w = by.get(layer) ?? 0
     if (w > bestW) {
       best = layer
@@ -144,6 +172,9 @@ function dominantLayerOf(files: AnalyzedFile[]): Layer {
   }
   return best
 }
+
+/** The project's own written code and page/style files (not tests, docs, settings or data). */
+const WRITTEN_CODE_KINDS = new Set<AnalyzedFile['kind']>(['source', 'markup', 'style', 'script'])
 
 /** Labels for supporting folders when the folder knowledge base has nothing to say. */
 const ZONE_FALLBACK: Record<Zone, { role: string; description: string; emoji: string }> = {
@@ -315,23 +346,100 @@ const LAYER_ROLE_LABEL: Record<Layer, string> = {
 
 const SUPPORT_ROLES = new Set<FileRole>(['test', 'fixture', 'docs', 'config', 'asset', 'other', 'ci', 'build', 'container', 'script'])
 
+/**
+ * Roles that count for less when other code sits beside them: generic code, and a Django app's many tiny migration
+ * files (fundraising/ has 3 migrations next to its models, views, forms and web addresses).
+ */
+const MINOR_ROLE_WEIGHT: Partial<Record<FileRole, number>> = { library: 0.6, other: 0.6, migration: 0.35, entry: 0.5 }
+/** The share of a mixed folder's code a role needs before it names the folder ("UI building blocks", "Services" …). */
+const ROLE_MAJORITY = 0.4
+
+/** A file's say in its folder's role: bigger files count more, but no file outvotes many others on its own. */
+function roleVote(f: AnalyzedFile): number {
+  return Math.sqrt(Math.min(fileLines(f), 2000)) + 1
+}
+
 function dominantRole(files: AnalyzedFile[], layer: Layer): FileRole {
   // In a folder of real code, its tests, docs and settings don't define what the folder is.
   const coreFolder = !PERIPHERAL_LAYERS.has(layer)
-  const pool = coreFolder && files.some((f) => !SUPPORT_ROLES.has(f.role)) ? files.filter((f) => !SUPPORT_ROLES.has(f.role)) : files
+  const own = files.filter((f) => !isWrapperScript(f.path))
+  const base = own.length > 0 ? own : files
+  const pool = coreFolder && base.some((f) => !SUPPORT_ROLES.has(f.role)) ? base.filter((f) => !SUPPORT_ROLES.has(f.role)) : base
   const by = new Map<FileRole, number>()
-  for (const f of pool) by.set(f.role, (by.get(f.role) ?? 0) + 1)
+  let total = 0
+  for (const f of pool) {
+    const v = roleVote(f)
+    by.set(f.role, (by.get(f.role) ?? 0) + v)
+    total += v
+  }
+  const mixed = by.size > 1
   let best: FileRole = 'other'
   let bestN = -1
+  let bestRaw = 0
   for (const [role, n] of by) {
     // Generic code only wins when nothing more specific is common.
-    const adj = role === 'library' || role === 'other' ? n * 0.6 : n
+    const adj = mixed ? n * (MINOR_ROLE_WEIGHT[role] ?? 1) : n
     if (adj > bestN || (adj === bestN && role < best)) {
       best = role
       bestN = adj
+      bestRaw = n
     }
   }
+  // A role must be a real share of a mixed folder to name it; otherwise the folder is general code of its layer.
+  if (mixed && pool.length >= 4 && best !== 'library' && best !== 'other' && bestRaw < total * ROLE_MAJORITY) return 'library'
+  // One front-door file (lib.rs, index.ts) doesn't make a folder "Starting points"; a folder of several programs does.
+  if (best === 'entry' && pool.filter((f) => f.role === 'entry' && !zonesOf(f.path).includes('example')).length < 2) return 'library'
   return best
+}
+
+const GAME_TECH = ['godot', 'unity', 'phaser', 'pygame', 'bevy', 'ebiten', 'ebitengine', 'monogame', 'libgdx', 'raylib', 'love2d', 'love', 'defold', 'cocos', 'unreal']
+const DESKTOP_TECH = ['electron', 'tauri', 'wails', 'nwjs', 'neutralino']
+const GAME_FILE = /\.(?:tscn|scn|unity|prefab|tmx|ldtk|tres)$/i
+
+/** Whether a folder's contents back up what its conventional name promises (see FolderRole.requires). */
+function folderFits(folder: FolderRole, files: AnalyzedFile[], techIds: ReadonlySet<string>): boolean {
+  switch (folder.requires) {
+    case undefined:
+      return true
+    case 'generated': {
+      // Build output is machine-made: a folder of hand-written code called "output" or "releases" is not.
+      if (files.length === 0) return true
+      let all = 0
+      let handwritten = 0
+      for (const f of files) {
+        const l = fileLines(f) + 1
+        all += l
+        if (f.kind === 'source' || f.kind === 'test' || f.kind === 'script' || f.kind === 'markup' || f.kind === 'style') handwritten += l
+      }
+      return handwritten < all * 0.5
+    }
+    case 'helm-chart':
+      return files.some((f) => /^(?:chart|values)\.ya?ml$/i.test(f.name) || /(?:^|\/)templates\/[^/]+\.ya?ml$/i.test(f.path))
+    case 'game':
+      return GAME_TECH.some((t) => techIds.has(t)) || files.some((f) => GAME_FILE.test(f.name))
+    case 'desktop-shell':
+      return DESKTOP_TECH.some((t) => techIds.has(t))
+    case 'go-code':
+      return files.some((f) => f.language === 'Go')
+    default:
+      return true
+  }
+}
+
+/**
+ * A Django "app": one self-contained feature of a Django site, with its own models, views and web addresses
+ * (fundraising/, members/, blog/ …). Recognized by the files Django's `startapp` creates.
+ */
+function djangoAppParts(m: Mod, files: AnalyzedFile[]): string[] | null {
+  if (!m.path) return null
+  const direct = new Set(files.filter((f) => f.dir === m.path).map((f) => f.name))
+  if (!direct.has('models.py') || !(direct.has('apps.py') || direct.has('views.py') || direct.has('urls.py'))) return null
+  const parts = ['its own stored information']
+  if (direct.has('views.py') || files.some((f) => f.role === 'page' && f.kind === 'markup')) parts.push('pages')
+  if (direct.has('forms.py')) parts.push('forms')
+  if (direct.has('urls.py')) parts.push('web addresses')
+  if (direct.has('admin.py')) parts.push('admin screens')
+  return parts
 }
 
 function topLanguages(files: AnalyzedFile[]): string[] {
@@ -345,7 +453,10 @@ function topLanguages(files: AnalyzedFile[]): string[] {
 function pickKeyFiles(files: AnalyzedFile[], layer: Layer): string[] {
   const testModule = layer === 'test'
   const candidates = files.filter((f) => f.kind !== 'asset' && f.kind !== 'generated' && (testModule ? f.kind === 'test' : f.kind !== 'test'))
-  const pool = candidates.length > 0 ? candidates : files
+  // A package's CHANGELOG, licence or manifest is never a good first read when it has code.
+  const hasCode = candidates.some((f) => f.kind === 'source')
+  const withoutPaperwork = hasCode ? candidates.filter((f) => f.kind === 'source' || f.kind === 'test' || !PAPERWORK_NAME.test(f.name)) : candidates
+  const pool = withoutPaperwork.length > 0 ? withoutPaperwork : files
   return [...pool]
     .sort(
       (a, b) =>
@@ -506,6 +617,14 @@ export function buildModules(files: AnalyzedFile[], options: BuildModulesOptions
   }
 
   // 6. Describe.
+  const techIds = new Set(options.techIds ?? [])
+  // A documentation website (site/ with a VitePress or Docusaurus setup) is supporting material, however much code its theme has.
+  let siteRoots: ReadonlySet<string> = new Set()
+  try {
+    siteRoots = docsSiteRoots(files.map((f) => f.path))
+  } catch {
+    // Optional knowledge; without it the folder is judged by its contents alone.
+  }
   const names = uniqueNames(mods)
   const assignments: Record<string, string> = dict<string>()
   const packageCount = mods.filter((m) => m.isPackage && m.subtrees.length > 0).length
@@ -524,14 +643,27 @@ export function buildModules(files: AnalyzedFile[], options: BuildModulesOptions
       bytes += f.size
       if (l > 0) layerBreakdown[f.layer] = (layerBreakdown[f.layer] ?? 0) + l
     }
-    const layer = dominantLayerOf(mfiles)
+    const docsSite = m.id !== ROOT_MODULE_ID && siteRoots.has(m.path.split('/')[0])
+    // The loose top-level files are a mix of settings, notes and maybe a little code: judge them all together.
+    const layer = docsSite ? 'docs' : dominantLayerOf(mfiles, m.id !== ROOT_MODULE_ID)
     const role = dominantRole(mfiles, layer)
     const languages = topLanguages(mfiles)
     const keyFiles = pickKeyFiles(mfiles, layer)
     const isRoot = m.id === ROOT_MODULE_ID
     const folderName = basename(m.path)
     const zone = isRoot ? undefined : zonesOf(`${m.path}/x`)[0]
-    const folder = isRoot ? null : (describeFolder(folderName) ?? (zone ? { ...ZONE_FALLBACK[zone], layer } : null))
+    // A conventional folder name only counts when the contents agree ("output" of hand-written formatters isn't build output).
+    const known = isRoot ? null : describeFolder(folderName)
+    const named = known && folderFits(known, mfiles, techIds) ? known : null
+    const django = isRoot || named || zone ? null : djangoAppParts(m, mfiles)
+    const folder: (FolderRole | { role: string; description: string; emoji: string; layer: Layer }) | null = isRoot
+      ? null
+      : (named ??
+        (zone
+          ? { ...ZONE_FALLBACK[zone], layer }
+          : django
+            ? { role: 'Website feature', emoji: '🧩', layer, description: `One self-contained feature of the website, with ${listJoin(django)}.` }
+            : null))
 
     let name = isRoot ? 'Project setup files' : (names.get(m) ?? folderName)
     let roleLabel: string
@@ -594,7 +726,7 @@ export function buildModules(files: AnalyzedFile[], options: BuildModulesOptions
         layerBreakdown,
       },
       weight: modWeight(m),
-      peripheral: isPeripheralMod(m),
+      peripheral: docsSite || isPeripheralMod(m),
     })
   }
 

@@ -1,13 +1,13 @@
 import { KeyRound, Sparkles } from 'lucide-react'
-import { useHasAiKey } from '@/ai'
 import { cn } from '@/components/ui/cn'
 import { MODELS } from '@/core/labels'
 import { useSettings } from '@/state/settings'
 import { useUi } from '@/state/ui'
+import { useHasClaudeKey } from './media'
 
 /** "Claude: on" when a key is saved, otherwise an inviting "Add Claude key". Both open Settings → Claude AI. */
 export function AiStatusChip({ className, compact }: { className?: string; compact?: boolean }) {
-  const hasKey = useHasAiKey()
+  const hasKey = useHasClaudeKey()
   const model = useSettings((s) => s.model)
   const openSettings = useUi((s) => s.openSettings)
   const modelLabel = MODELS[model]?.label ?? 'Claude'

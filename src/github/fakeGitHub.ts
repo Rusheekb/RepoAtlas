@@ -16,6 +16,8 @@ export interface FakeRepoOptions {
   /** Paths whose raw download fails with this status. */
   rawStatus?: Record<string, number>
   rateLimit?: { limit: number; remaining: number; reset: number }
+  /** Extra branch or tag names (they may contain slashes) that resolve to the same commit. */
+  branches?: string[]
 }
 
 export interface FetchCall {
@@ -87,6 +89,8 @@ export function fakeGitHub(opts: FakeRepoOptions = {}) {
     if (url.host !== 'api.github.com') return textResponse('unexpected host', { status: 599 })
     const p = url.pathname.toLowerCase()
     if (!p.startsWith(base)) return jsonResponse({ message: 'Not Found' }, { status: 404, headers: rlHeaders })
+    // Like GitHub: a private repository does not exist for anyone without a token.
+    if (opts.isPrivate && !headersOf(init).authorization) return jsonResponse({ message: 'Not Found' }, { status: 404, headers: rlHeaders })
     const rest = url.pathname.slice(base.length)
 
     if (rest === '' || rest === '/') {
@@ -117,7 +121,7 @@ export function fakeGitHub(opts: FakeRepoOptions = {}) {
     }
     if (rest.startsWith('/commits/')) {
       const ref = decodeURIComponent(rest.slice('/commits/'.length))
-      if (ref !== defaultBranch && ref !== sha) {
+      if (ref !== defaultBranch && ref !== sha && !opts.branches?.includes(ref)) {
         return jsonResponse({ message: `No commit found for SHA: ${ref}` }, { status: 422, headers: rlHeaders })
       }
       return textResponse(sha, { headers: rlHeaders })
@@ -138,7 +142,6 @@ export function fakeGitHub(opts: FakeRepoOptions = {}) {
     }
     if (rest.startsWith('/contents/')) {
       const path = rest.slice('/contents/'.length).split('/').map(decodeURIComponent).join('/')
-      if (opts.isPrivate && !headersOf(init).authorization) return jsonResponse({ message: 'Not Found' }, { status: 404, headers: rlHeaders })
       const text = contentOf(path)
       return text == null
         ? jsonResponse({ message: 'Not Found' }, { status: 404, headers: rlHeaders })

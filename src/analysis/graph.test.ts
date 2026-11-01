@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ManifestInfo } from '@/knowledge'
-import { findEntryPoints, findHubs } from './graph'
+import { findEntryPoints, findHubs, relianceOf, relianceText } from './graph'
 import { makeFile } from './structure/testkit'
 
 function manifests(overrides: Partial<ManifestInfo> = {}): ManifestInfo {
@@ -112,5 +112,58 @@ describe('findHubs', () => {
       makeFile('test/2.test.ts', { kind: 'test' }),
     ]
     expect(findHubs(files)).toEqual(['src/a.ts', 'src/b.ts'])
+  })
+})
+
+describe('findEntryPoints: false starts', () => {
+  it('never offers the Maven or Gradle wrapper as the place a Java program starts', () => {
+    const app = 'package com.example.demo;\n\n@SpringBootApplication\npublic class DemoApplication {\n  public static void main(String[] args) { SpringApplication.run(DemoApplication.class, args); }\n}\n'
+    const files = [
+      makeFile('mvnw', { kind: 'script', role: 'script', layer: 'infra', language: null }),
+      makeFile('gradlew', { kind: 'script', role: 'script', layer: 'infra', language: null }),
+      makeFile('src/main/java/com/example/demo/DemoApplication.java', { language: 'Java', role: 'entry', layer: 'api' }),
+    ]
+    const eps = findEntryPoints(files, manifests(), { mvnw: '#!/bin/sh\necho maven\n', gradlew: '#!/bin/sh\necho gradle\n', 'src/main/java/com/example/demo/DemoApplication.java': app })
+    expect(eps.map((e) => e.path)).toEqual(['src/main/java/com/example/demo/DemoApplication.java'])
+    expect(eps[0].reason).toMatch(/server starts here/)
+  })
+
+  it('only falls back to scripts that merely start with "#!" when nothing better exists', () => {
+    const files = [
+      makeFile('main.go', { language: 'Go' }),
+      makeFile('install', { kind: 'script', role: 'script', layer: 'infra', language: null }),
+      makeFile('bin/fzf-tmux', { kind: 'script', role: 'cli', layer: 'api', language: 'Shell' }),
+    ]
+    const contents = { 'main.go': 'package main\n\nfunc main() {\n}\n', install: '#!/usr/bin/env bash\necho installing\n', 'bin/fzf-tmux': '#!/usr/bin/env bash\necho tmux\n' }
+    const eps = findEntryPoints(files, manifests(), contents).map((e) => e.path)
+    expect(eps).toContain('main.go')
+    expect(eps).toContain('bin/fzf-tmux')
+    expect(eps).not.toContain('install')
+
+    const onlyScripts = findEntryPoints([files[1]], manifests(), contents)
+    expect(onlyScripts.map((e) => e.path)).toEqual(['install'])
+  })
+
+  it('ignores server code that only sits inside a string (a test fixture)', () => {
+    const files = [makeFile('src/main.tsx', { language: 'TSX' }), makeFile('src/views/visual/sampleData.ts', { language: 'TypeScript' })]
+    const contents = {
+      'src/main.tsx': "createRoot(document.getElementById('root')!).render(<App />)\n",
+      'src/views/visual/sampleData.ts': "export const files = { 'server.js': 'const app = express()\\napp.listen(3000)' }\n",
+    }
+    expect(findEntryPoints(files, manifests(), contents).map((e) => e.path)).toEqual(['src/main.tsx'])
+  })
+})
+
+describe('relianceOf', () => {
+  it('counts every importer and says how many are tests', () => {
+    const hub = makeFile('src/globals.py', { importedBy: ['src/a.py', 'src/b.py', 'tests/test_a.py'] })
+    const files = Object.fromEntries(
+      [hub, makeFile('src/a.py'), makeFile('src/b.py'), makeFile('tests/test_a.py', { kind: 'test', role: 'test', layer: 'test' })].map((f) => [f.path, f]),
+    )
+    const r = relianceOf(hub, files)
+    expect(r).toEqual({ total: 3, tests: 1 })
+    expect(relianceText(r)).toBe('3 other files (1 of them is a test)')
+    expect(relianceText({ total: 7, tests: 5 })).toBe('7 other files (5 of them are tests)')
+    expect(relianceText({ total: 2, tests: 0 })).toBe('2 other files')
   })
 })

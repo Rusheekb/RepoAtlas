@@ -8,8 +8,13 @@
   40% { opacity: 1; transform: translateY(-2px); }
 }
 
-/* The question box shows focus on its whole frame (see Composer), so the textarea itself needs no second outline. */
-.atlas-composer textarea:focus-visible { outline: none; }
+/*
+ * The question box shows focus on its whole frame (see Composer), so the textarea itself needs no second outline.
+ * Except in Windows High Contrast (forced colors), which removes that frame's ring: there the textarea keeps one.
+ */
+@media not (forced-colors: active) {
+  .atlas-composer textarea:focus-visible { outline: none; }
+}
 
 /* Headings that receive focus only so screen readers announce them (e.g. the next quiz question) need no outline. */
 .atlas-focus-target:focus-visible { outline: none; }

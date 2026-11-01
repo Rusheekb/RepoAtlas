@@ -1,6 +1,7 @@
 import { extractImports } from './imports'
 import { detectLanguage } from './languages'
 import { createResolver, type ResolvedImport, type ResolverContext } from './resolve'
+import { cargoTables } from './imports/resolvers/rust'
 
 /** Build a resolver over a fake repo and return a `(from, spec, opts) → result` helper. */
 function repo(paths: string[], files: Record<string, string> = {}, extra: Partial<ResolverContext> = {}) {
@@ -379,6 +380,69 @@ describe('Rust resolution', () => {
     expect(r('src/lib.rs', 'core::fmt')).toEqual(bi('core'))
     expect(r('src/lib.rs', 'serde::Serialize')).toEqual(ext('serde'))
     expect(r('src/lib.rs', 'tokio', { kind: 'extern' })).toEqual(ext('tokio'))
+  })
+
+  it('treats [[bin]] and [lib] paths from Cargo.toml as crate roots (ripgrep layout)', () => {
+    const rg = repo(
+      [
+        'crates/core/main.rs',
+        'crates/core/flags/mod.rs',
+        'crates/core/flags/hiargs.rs',
+        'crates/core/search.rs',
+        'crates/ignore/Cargo.toml',
+        'crates/ignore/src/lib.rs',
+        'crates/ignore/src/walk.rs',
+        'crates/odd/Cargo.toml',
+        'crates/odd/lib/root.rs',
+        'crates/odd/lib/inner.rs',
+      ],
+      {
+        'Cargo.toml': [
+          '[package]',
+          'name = "ripgrep"',
+          'description = """',
+          '[[bin]] inside a long description is not a table',
+          '"""',
+          '',
+          '[[bin]]',
+          'bench = false',
+          'path = "crates/core/main.rs"',
+          'name = "rg"',
+          '',
+          '[[test]]',
+          'name = "integration"',
+          'path = "tests/tests.rs"',
+          '',
+          '[dependencies]',
+          'ignore = { version = "0.4", path = "crates/ignore" }',
+        ].join('\n'),
+        'crates/ignore/Cargo.toml': '[package]\nname = "ignore"\n',
+        'crates/odd/Cargo.toml': '[package]\nname = "odd-pkg"\n\n[lib]\nname = "odd_lib"\npath = "lib/root.rs"\n',
+        'crates/core/main.rs': 'mod flags;\nmod search;\n',
+        'crates/odd/lib/root.rs': 'pub mod inner;\n',
+      },
+    )
+    // `mod x;` in the [[bin]] root looks next to it, and `crate::` means that root everywhere below it.
+    expect(rg('crates/core/main.rs', 'flags', { kind: 'mod' })).toEqual(int('crates/core/flags/mod.rs'))
+    expect(rg('crates/core/main.rs', 'search', { kind: 'mod' })).toEqual(int('crates/core/search.rs'))
+    expect(rg('crates/core/main.rs', 'crate::flags::HiArgs')).toEqual(int('crates/core/flags/mod.rs'))
+    expect(rg('crates/core/flags/mod.rs', 'hiargs', { kind: 'mod' })).toEqual(int('crates/core/flags/hiargs.rs'))
+    expect(rg('crates/core/flags/hiargs.rs', 'crate::search::SearchWorker')).toEqual(int('crates/core/search.rs'))
+    expect(rg('crates/core/search.rs', 'super::flags::HiArgs')).toEqual(int('crates/core/flags/mod.rs'))
+    // Workspace crates still resolve by name; a [lib] name and path override the defaults.
+    expect(rg('crates/core/main.rs', 'ignore::WalkState')).toEqual(int('crates/ignore/src/lib.rs'))
+    expect(rg('crates/core/main.rs', 'odd_lib::inner::Thing')).toEqual(int('crates/odd/lib/inner.rs'))
+    expect(rg('crates/odd/lib/root.rs', 'inner', { kind: 'mod' })).toEqual(int('crates/odd/lib/inner.rs'))
+    expect(rg('crates/odd/lib/inner.rs', 'crate::Thing')).toEqual(int('crates/odd/lib/root.rs'))
+  })
+
+  it('reads Cargo tables line by line, quickly, whatever the manifest holds', () => {
+    const tables = cargoTables('[package]\nname = "a-b"\n\n[[bin]]\npath = "x.rs"\n[[bin]]\npath = \'y.rs\'\n[lib]\npath="l.rs"\n')
+    expect(tables.filter((t) => t.header === '[bin]').map((t) => t.values.get('path'))).toEqual(['x.rs', 'y.rs'])
+    expect(tables.find((t) => t.header === 'lib')?.values.get('path')).toBe('l.rs')
+    const t0 = performance.now()
+    cargoTables(`[package]\n${' \n'.repeat(50_000)}${'['.repeat(100_000)}\n${'a = '.repeat(25_000)}`)
+    expect(performance.now() - t0).toBeLessThan(200)
   })
 })
 

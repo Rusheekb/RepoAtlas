@@ -23,7 +23,9 @@ export interface RepoState {
 }
 
 let controller: AbortController | null = null
+/** Files downloaded on demand, keyed by repository, commit and path (see extraKey). Emptied on every load. */
 const extraFiles = new Map<string, string>()
+const extraKey = (snapshot: RepoSnapshot, path: string) => `${snapshot.meta.fullName.toLowerCase()}@${snapshot.commitSha}:${path}`
 
 export const useRepoStore = create<RepoState>()((set, get) => ({
   key: null,
@@ -45,12 +47,14 @@ export const useRepoStore = create<RepoState>()((set, get) => ({
     extraFiles.clear()
     set({ key, ref, status: 'loading', progress: { stage: 'meta', message: 'Finding the repository on GitHub…' }, snapshot: null, analysis: null, error: null })
 
-    const { githubToken, analysisDepth } = useSettings.getState()
+    const { githubToken, analysisDepth, rememberKeys } = useSettings.getState()
     try {
       const snapshot = await loadRepoSnapshot(ref, {
         token: githubToken.trim() || undefined,
         depth: analysisDepth,
         force: opts?.force,
+        // Private code is only kept on this computer when the user asked us to remember their keys.
+        persistPrivate: rememberKeys,
         signal: ctrl.signal,
         onProgress: (progress) => {
           if (controller === ctrl) set({ progress })
@@ -80,9 +84,12 @@ export const useRepoStore = create<RepoState>()((set, get) => ({
   getFileContent: async (path) => {
     const { snapshot } = get()
     if (!snapshot) throw new Error('No repository loaded')
-    if (path in snapshot.files) return snapshot.files[path]
-    const hit = extraFiles.get(path)
+    if (Object.hasOwn(snapshot.files, path)) return snapshot.files[path]
+    const key = extraKey(snapshot, path)
+    const hit = extraFiles.get(key)
     if (hit != null) return hit
+    // Opening another repository or branch aborts this download (it belongs to the load that was current when it began).
+    const ctrl = controller
     const text = await fetchFileText({
       owner: snapshot.meta.owner,
       repo: snapshot.meta.repo,
@@ -90,8 +97,10 @@ export const useRepoStore = create<RepoState>()((set, get) => ({
       path,
       token: useSettings.getState().githubToken.trim() || undefined,
       isPrivate: snapshot.meta.isPrivate,
+      signal: ctrl?.signal,
     })
-    extraFiles.set(path, text)
+    // A late answer for a repository or branch that is no longer open must not be remembered for the new one.
+    if (get().snapshot === snapshot && controller === ctrl) extraFiles.set(key, text)
     return text
   },
 

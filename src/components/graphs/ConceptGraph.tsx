@@ -8,7 +8,7 @@ import { CONCEPT_CATEGORIES, CONCEPT_CATEGORY_INFO, conceptCategoryInfo } from '
 import { FlowCanvas } from './flow/FlowCanvas'
 import { PathEdge, type PathFlowEdge } from './flow/PathEdge'
 import type { TooltipContent } from './GraphTooltip'
-import { buildNeighbors, estimateLabelSize, layoutForce, placeEdgeLabels, rectEdgeGeometry, type EdgeGeometry, type Rect } from './layout'
+import { buildNeighbors, estimateLabelSize, layoutForce, placeEdgeLabelSpots, routeAround, type EdgeGeometry, type Rect } from './layout'
 import { centerHandles } from './nodes/common'
 import { ConceptNode, conceptNodeSize, type ConceptFlowNode } from './nodes/ConceptNode'
 
@@ -35,10 +35,16 @@ export interface ConceptLayout {
   neighbors: Map<string, Set<string>>
   categories: ConceptCategory[]
   key: string
+  /** Concept ids, most central first (what a close-up starts from). */
+  rank: string[]
 }
 
-/** Settle a force layout up front and turn it into static React Flow nodes + labeled, clipped edges. */
-export function buildConceptLayout(map: ConceptMap): ConceptLayout {
+/**
+ * Settle a force layout up front and turn it into static React Flow nodes + labeled, clipped edges. Edges bow
+ * around cards that sit in their way, and relation labels go to a free spot on (or just beside) their edge; a label
+ * with no free spot only appears while its edge is highlighted, so it never covers a card's name.
+ */
+export function buildConceptLayout(map: ConceptMap, opts: { aspect?: number } = {}): ConceptLayout {
   const concepts = dedupeConcepts(map.concepts)
   const ids = new Set(concepts.map((c) => c.id))
   const relations = map.relations.filter((r) => r.from !== r.to && ids.has(r.from) && ids.has(r.to))
@@ -46,7 +52,7 @@ export function buildConceptLayout(map: ConceptMap): ConceptLayout {
   const layout = layoutForce(
     sized,
     relations.map((r) => ({ source: r.from, target: r.to })),
-    { linkDistance: 160 },
+    { aspect: opts.aspect },
   )
   const rects = new Map<string, Rect>()
   for (const s of sized) {
@@ -77,11 +83,13 @@ export function buildConceptLayout(map: ConceptMap): ConceptLayout {
     seenPair.set(k, nth + 1)
     // Several relations between the same two ideas fan out as gentle curves instead of overlapping.
     const bend = count > 1 ? (nth - (count - 1) / 2) * 44 * (r.from < r.to ? 1 : -1) : 0
-    return rectEdgeGeometry(rects.get(r.from) as Rect, rects.get(r.to) as Rect, bend)
+    const others = [...rects].filter(([id]) => id !== r.from && id !== r.to).map(([, rect]) => rect)
+    // An arrow drawn under an unrelated card reads as a sentence about that card: bow around it instead.
+    return routeAround(rects.get(r.from) as Rect, rects.get(r.to) as Rect, others, bend)
   })
   const labels = relations.map((r) => r.label.trim() || 'relates to')
-  // Slide labels along their edges so they don't sit on cards or on each other.
-  const spots = placeEdgeLabels(
+  // Slide labels along (or just beside) their edges so they don't sit on cards or on each other.
+  const spots = placeEdgeLabelSpots(
     geos.map((geo, i) => ({ geo, ...estimateLabelSize(labels[i]) })),
     [...rects.values()],
   )
@@ -90,15 +98,32 @@ export function buildConceptLayout(map: ConceptMap): ConceptLayout {
     source: r.from,
     target: r.to,
     type: 'path',
-    data: { path: geos[i].path, labelX: spots[i].x, labelY: spots[i].y, width: 1.5, label: labels[i] },
+    data: {
+      path: geos[i].path,
+      labelX: spots[i].x,
+      labelY: spots[i].y,
+      width: 1.5,
+      label: labels[i],
+      ...(spots[i].clear ? {} : { labelOnlyWhenActive: true }),
+    },
   }))
   const present = new Set(concepts.map((c) => c.category))
+  const degree = new Map<string, number>()
+  for (const r of relations) {
+    degree.set(r.from, (degree.get(r.from) ?? 0) + 1)
+    degree.set(r.to, (degree.get(r.to) ?? 0) + 1)
+  }
+  const rank = concepts
+    .map((c, i) => ({ id: c.id, imp: Number.isFinite(c.importance) ? c.importance : 3, deg: degree.get(c.id) ?? 0, i }))
+    .sort((a, b) => b.imp - a.imp || b.deg - a.deg || a.i - b.i)
+    .map((c) => c.id)
   return {
     nodes,
     edges,
     neighbors: buildNeighbors(relations.map((r) => ({ source: r.from, target: r.to }))),
     categories: CONCEPT_CATEGORIES.filter((c) => present.has(c)),
     key: `${concepts.map((c) => `${c.id}:${c.importance}`).join(',')}|${relations.map((r) => `${r.from}>${r.to}`).join(',')}`,
+    rank,
   }
 }
 
@@ -180,12 +205,15 @@ export function ConceptGraph({ map, selectedId, onSelect, className, highlightId
       layoutKey={graph.key}
       edgeLabels={graph.edges.length > ALWAYS_LABEL_LIMIT ? 'focus' : 'always'}
       fitPadding={24}
-      panel={
-        <div className="space-y-1.5">
-          {graph.categories.length >= 2 && <ConceptLegend categories={graph.categories} />}
-          <p className="text-[11px] text-ink-3">
+      focusRank={graph.rank}
+      overviewLabel={`Show all ${graph.nodes.length} ideas`}
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1.5">
+          {graph.categories.length >= 2 ? <ConceptLegend categories={graph.categories} /> : <span />}
+          <p className="text-xs text-ink-3">
             Bigger cards are more central ideas. Read each arrow as a sentence: idea → phrase → idea.
-            {graph.edges.length > ALWAYS_LABEL_LIMIT && ' Hover or select an idea to see its links spelled out.'}
+            {(graph.edges.length > ALWAYS_LABEL_LIMIT || graph.edges.some((e) => e.data?.labelOnlyWhenActive)) &&
+              ' Hover or select an idea to see all its links spelled out.'}
           </p>
         </div>
       }

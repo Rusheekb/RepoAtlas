@@ -66,7 +66,8 @@ const NEUTRAL = '#9b9a94'
 const LANGS: Record<string, LangSpec> = {
   // JavaScript family
   TypeScript: { color: '#3178c6', isCode: true, family: 'js' },
-  TSX: { color: '#3178c6', isCode: true, family: 'js' },
+  // Linguist gives TSX the same blue as TypeScript; shift it so charts can tell the two apart.
+  TSX: { color: '#235a97', isCode: true, family: 'js' },
   JavaScript: { color: '#f1e05a', isCode: true, family: 'js' },
   Vue: { color: '#41b883', isCode: true, family: 'js' },
   Svelte: { color: '#ff3e00', isCode: true, family: 'js' },

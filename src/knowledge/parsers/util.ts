@@ -455,10 +455,60 @@ function normalizeAbsolute(word: string, stripPrefixes: string[]): string {
   return word
 }
 
-/** Whether a manifest sits in a folder that isn't the project itself (examples, fixtures, vendored code …). */
+/**
+ * Whether a manifest sits in a folder that isn't the project itself (examples, fixtures, vendored code …).
+ * Folders below a JVM source root (src/main/java/com/example/…) are package names, so they never count.
+ */
 export function isPeripheralPath(path: string): boolean {
   const segs = path.toLowerCase().split('/').slice(0, -1)
-  return segs.some((s) => PERIPHERAL_DIRS.has(s))
+  let end = segs.length
+  for (let i = 2; i < segs.length; i++) {
+    if (JVM_SOURCE_LANGS.has(segs[i]) && segs[i - 2] === 'src') {
+      end = i + 1
+      break
+    }
+  }
+  for (let i = 0; i < end; i++) if (PERIPHERAL_DIRS.has(segs[i])) return true
+  return false
+}
+
+const JVM_SOURCE_LANGS = new Set(['java', 'kotlin', 'scala', 'groovy'])
+
+/** Top-level folders that usually hold a documentation website rather than the product itself. */
+const DOCS_SITE_DIRS = new Set(['docs', 'doc', 'documentation', 'site', 'website', 'docs-site', 'docsite', 'web-docs'])
+/** Files that show a folder is built by a documentation-site generator (VitePress, Docusaurus, MkDocs …). */
+const DOCS_SITE_MARKER = /^(?:\.vitepress|\.vuepress|docusaurus\.config\.[cm]?[jt]s|mkdocs\.ya?ml|book\.toml|conf\.py|theme\.config\.[jt]sx?|_config\.ya?ml|astro\.config\.[cm]?[jt]s|sidebars\.[cm]?[jt]s)$/i
+
+/**
+ * Top-level folders holding a documentation website: docs/, doc/ and documentation/ always; site/ and website/
+ * only when a docs-site generator's files sit in them (so a repository whose product *is* a website keeps it).
+ * Their manifests list what the docs site needs, not what the project itself is built with.
+ */
+export function docsSiteRoots(paths: readonly string[]): Set<string> {
+  const out = new Set<string>()
+  for (const p of paths) {
+    if (typeof p !== 'string') continue
+    const slash = p.indexOf('/')
+    if (slash <= 0) continue
+    const top = p.slice(0, slash)
+    const lowerTop = top.toLowerCase()
+    if (!DOCS_SITE_DIRS.has(lowerTop) || out.has(top)) continue
+    if (lowerTop === 'docs' || lowerTop === 'doc' || lowerTop === 'documentation') {
+      out.add(top)
+      continue
+    }
+    const rest = p.slice(slash + 1)
+    const next = rest.split('/')[0]
+    if (DOCS_SITE_MARKER.test(next)) out.add(top)
+  }
+  return out
+}
+
+/** Whether a path sits inside one of the documentation-site folders found by docsSiteRoots. */
+export function inDocsSite(path: string, roots: ReadonlySet<string>): boolean {
+  if (roots.size === 0) return false
+  const slash = path.indexOf('/')
+  return slash > 0 && roots.has(path.slice(0, slash))
 }
 
 const PERIPHERAL_DIRS = new Set([

@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useDeferredValue, useId, useMemo, useState } from 'react'
 import { ChevronDown, PanelLeftClose, PanelLeftOpen, Search, X } from 'lucide-react'
 import { FileTree } from '@/components/code/FileTree'
 import { filterFiles, queryTerms } from '@/components/code/fileTree'
@@ -24,9 +24,13 @@ export interface FilesPaneProps {
 /** The left pane of "Read the Code": a search box above the project's folder tree. */
 export function FilesPane({ files, selectedPath, onSelect, revealPath, isSeen, collapsible, open, onOpenChange, onHide, className }: FilesPaneProps) {
   const [query, setQuery] = useState('')
+  // Typing stays instant: the tree catches up with the latest query when the browser has a moment (and a slower
+  // search is simply dropped when the next key arrives). The files are filtered once, here, for the tree and the count.
+  const searchQuery = useDeferredValue(query)
   const inputId = useId()
   const bodyId = useId()
-  const matchCount = useMemo(() => (queryTerms(query).length ? filterFiles(files, query).length : null), [files, query])
+  const matches = useMemo(() => (queryTerms(searchQuery).length ? filterFiles(files, searchQuery) : null), [files, searchQuery])
+  const matchCount = matches ? matches.length : null
   const showBody = !collapsible || open
 
   return (
@@ -101,7 +105,7 @@ export function FilesPane({ files, selectedPath, onSelect, revealPath, isSeen, c
                 placeholder="Find a file…"
                 autoComplete="off"
                 spellCheck={false}
-                className="h-9 w-full rounded-xl border border-line-strong bg-surface pr-8 pl-9 text-sm text-ink placeholder:text-ink-3 focus:border-brand focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+                className="h-9 w-full rounded-xl border border-line-strong bg-surface pr-8 pl-9 text-sm text-ink placeholder:text-ink-3 focus:border-brand focus:outline-hidden [&::-webkit-search-cancel-button]:hidden"
               />
               {query && (
                 <button
@@ -125,7 +129,8 @@ export function FilesPane({ files, selectedPath, onSelect, revealPath, isSeen, c
             files={files}
             selectedPath={selectedPath}
             onSelect={onSelect}
-            query={query}
+            query={searchQuery}
+            matches={matches}
             revealPath={revealPath}
             isSeen={isSeen}
           />

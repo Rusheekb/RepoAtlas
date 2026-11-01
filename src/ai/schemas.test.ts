@@ -44,11 +44,11 @@ describe('structured output schemas', () => {
     expect(parsed.tours[0].steps[0].file).toBeNull()
   })
 
-  it('rejects unknown concept categories', () => {
+  it('accepts off-list concept categories (validateConceptMap maps them), so one odd word never sinks a whole map', () => {
     const r = ConceptMapSchema.safeParse({
-      concepts: [{ id: 'a', name: 'A', emoji: '💡', category: 'nonsense', summary: '', explanation: '', analogy: '', files: [], importance: 3 }],
+      concepts: [{ id: 'a', name: 'A', emoji: '💡', category: 'Technology', summary: '', explanation: '', analogy: '', files: [], importance: 3 }],
       relations: [],
     })
-    expect(r.success).toBe(false)
+    expect(r.success).toBe(true)
   })
 })

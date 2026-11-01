@@ -1,5 +1,5 @@
 import type { RepoRef } from '@/core/types'
-import { parseRepoInput } from '@/github'
+import { parseRepoInput } from '@/github/parse'
 
 export type RepoInputCheck = { ok: true; ref: RepoRef } | { ok: false; message: string }
 

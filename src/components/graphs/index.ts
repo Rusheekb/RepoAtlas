@@ -1,5 +1,5 @@
 export { ArchitectureGraph, buildArchitectureLayout, type ArchitectureGraphProps } from './ArchitectureGraph'
-export { FileGraph, type FileGraphProps } from './FileGraph'
+export { FileGraph, buildFileGraphLayout, type FileGraphProps } from './FileGraph'
 export { NeighborhoodGraph, type NeighborhoodGraphProps } from './NeighborhoodGraph'
 export { ConceptGraph, ConceptLegend, buildConceptLayout, type ConceptGraphProps } from './ConceptGraph'
 export { CodeTreemap, type CodeTreemapProps } from './CodeTreemap'

@@ -269,7 +269,7 @@ export function NeighborhoodGraph({ file, allFiles, onSelect, className, maxPerS
           <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" aria-hidden focusable="false">
             <defs>
               <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto">
-                <path d="M0,1 L10,5 L0,9 Z" style={{ fill: 'var(--line-strong)' }} />
+                <path d="M0,1 L10,5 L0,9 Z" style={{ fill: 'var(--edge)' }} />
               </marker>
             </defs>
             {connectors.map((c) => (
@@ -277,7 +277,7 @@ export function NeighborhoodGraph({ file, allFiles, onSelect, className, maxPerS
                 key={c.key}
                 d={c.d}
                 fill="none"
-                style={{ stroke: 'var(--line-strong)', strokeWidth: 1.5 }}
+                style={{ stroke: 'var(--edge)', strokeWidth: 1.5 }}
                 markerEnd={`url(#${markerId})`}
               />
             ))}

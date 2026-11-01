@@ -1,6 +1,6 @@
 import { makeFile, makeFixture } from '@/ai/testFixtures'
 import type { RepoAnalysis } from '@/core/types'
-import { buildStarterQuiz, firstSentence, lowerFirst, makeQuestion, seededRandom, validQuestions } from './starterQuiz'
+import { buildStarterQuiz, firstSentence, kindDistractors, lowerFirst, makeQuestion, seededRandom, validQuestions } from './starterQuiz'
 
 /** The AI fixture plus a few more files, parts and words, so every kind of question has material. */
 function richAnalysis(): RepoAnalysis {
@@ -142,5 +142,44 @@ describe('helpers', () => {
     const good = { question: 'Q?', options: ['a', 'b'], answerIndex: 1, explanation: '' }
     expect(validQuestions({ questions: [good, { ...good, answerIndex: 5 }, { ...good, options: ['only'] }, { ...good, question: ' ' }] })).toEqual([good])
     expect(validQuestions(null)).toEqual([])
+  })
+})
+
+describe('“What kind of project is this?”', () => {
+  function libraryAnalysis(description: string, readme = ''): RepoAnalysis {
+    const a = richAnalysis()
+    a.meta = { ...a.meta, description }
+    a.readme = readme ? { path: 'README.md', content: readme } : null
+    a.projectKind = { id: 'library', label: 'Library', description: 'A toolbox of code.', emoji: '🧰', confidence: 0.8, reasons: [] }
+    return a
+  }
+  const kindOptions = (a: RepoAnalysis, seed: number) => buildStarterQuiz(a, { seed }).questions.find((q) => /kind of project/.test(q.question))?.options ?? []
+
+  it.each([
+    ['The Python micro framework for building web applications.', ''],
+    ['Fast, unopinionated, minimalist web framework for node.', ''],
+    ['Gin is a high-performance HTTP web framework written in Go.', '# Gin\n\nGin is designed for building REST APIs, web applications, and microservices.'],
+  ])('never marks the project’s own words wrong: %s', (description, readme) => {
+    const a = libraryAnalysis(description, readme)
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const options = kindOptions(a, seed)
+      expect(options).toContain('Library')
+      expect(options).not.toContain('Web application')
+      expect(options).not.toContain('Server / API')
+      expect(options).not.toContain('Website')
+      expect(options.length).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  it('keeps the usual traps when the description doesn’t point at them', () => {
+    const a = libraryAnalysis('Helpers for dates and times.')
+    expect(kindDistractors(a, 'library')).toEqual(expect.arrayContaining(['web-app', 'api-server', 'cli-tool']))
+  })
+
+  it('reads the start of the README too, ignoring badges and links', () => {
+    const a = libraryAnalysis('A toolkit.', '[![build](https://ci.example/web.svg)](https://ci.example)\n\nA command-line helper for your terminal.')
+    const wrong = kindDistractors(a, 'library')
+    expect(wrong).not.toContain('cli-tool')
+    expect(wrong).toContain('web-app')
   })
 })

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { AlertTriangle, Check, ClipboardCopy, ExternalLink, KeyRound, RefreshCw, Settings, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Check, ClipboardCopy, ExternalLink, History, KeyRound, RefreshCw, Settings, Sparkles, X } from 'lucide-react'
 import { useCopyPrompt, type AiRunState, type AiStatus, type PromptTask } from '@/ai'
 import { Button, Modal } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
@@ -160,9 +160,17 @@ export function AiProgress({
       <Sparkles className="size-5 shrink-0 text-brand-text motion-safe:animate-pulse" aria-hidden />
       <div className="min-w-0 flex-[1_1_14rem]">
         <p className="text-sm font-semibold text-ink">{label}</p>
-        <p className="mt-0.5 text-xs text-ink-2" aria-live="polite">
-          {aiStatusText(status)}
-          {progressChars > 0 && <span className="tabular-nums"> · {formatCompact(progressChars)} characters written so far</span>}
+        <p className="mt-0.5 text-xs text-ink-2">
+          {/* Only the status is announced; the character count changes with every word, so it stays visual. */}
+          <span role="status" aria-live="polite">
+            {aiStatusText(status)}
+          </span>
+          {progressChars > 0 && (
+            <span className="tabular-nums" aria-hidden>
+              {' '}
+              · {formatCompact(progressChars)} characters written so far
+            </span>
+          )}
         </p>
         <div
           role="progressbar"
@@ -210,6 +218,8 @@ export interface AiAssistProps {
   pitch: ReactNode
   /** Shown next to "Regenerate" once Claude's version exists. */
   doneNote?: ReactNode
+  /** Claude's version was made for an older commit of the code (it is still shown, with a nudge to refresh it). */
+  stale?: boolean
   /** The ready-made prompt readers without a key can paste into claude.ai. */
   promptTask: PromptTask
   /** Extra controls under the callout when a key is set (e.g. "Ask for a tour"). */
@@ -237,6 +247,7 @@ export function AiAssist({
   busyLabel,
   pitch,
   doneNote,
+  stale = false,
   promptTask,
   children,
   className,
@@ -321,12 +332,24 @@ export function AiAssist({
       {errorBox}
       {hasData ? (
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-line bg-surface px-4 py-2.5 shadow-sm">
-          <p className="flex min-w-0 items-center gap-2 text-sm text-ink-2">
-            <Sparkles className="size-4 shrink-0 text-brand-text" aria-hidden />
-            {doneNote ?? 'Made by Claude from the actual code.'}
+          <p className="flex min-w-0 items-center gap-2 text-sm text-ink-2" data-testid={stale ? 'ai-stale' : undefined}>
+            {stale ? (
+              <>
+                <History className="size-4 shrink-0 text-warn-text" aria-hidden />
+                <span>
+                  <span className="font-medium text-ink">Made for an older version of the code.</span> The project has changed since Claude
+                  wrote this — refresh it to include the latest changes.
+                </span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-4 shrink-0 text-brand-text" aria-hidden />
+                {doneNote ?? 'Made by Claude from the actual code.'}
+              </>
+            )}
           </p>
-          <Button size="sm" variant="ghost" onClick={onGenerate} icon={<RefreshCw className="size-4" aria-hidden />}>
-            {regenerateLabel}
+          <Button size="sm" variant={stale ? 'secondary' : 'ghost'} onClick={onGenerate} icon={<RefreshCw className="size-4" aria-hidden />}>
+            {stale ? 'Update with Claude' : regenerateLabel}
           </Button>
         </div>
       ) : (

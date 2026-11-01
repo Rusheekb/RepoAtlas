@@ -114,3 +114,17 @@ describe('describeFolder', () => {
     expect(describeFolder('__proto__')).toEqual(FOLDER_ROLES.proto)
   })
 })
+
+describe('folder names that need their contents to agree', () => {
+  it('mark the names that only mean something with the right files or technology', () => {
+    expect(describeFolder('output')?.requires).toBe('generated')
+    expect(describeFolder('releases')?.requires).toBe('generated')
+    expect(describeFolder('charts')?.requires).toBe('helm-chart')
+    expect(describeFolder('scenes')?.requires).toBe('game')
+    expect(describeFolder('renderer')?.requires).toBe('desktop-shell')
+    expect(describeFolder('pkg')?.requires).toBe('go-code')
+    expect(describeFolder('components')?.requires).toBeUndefined()
+    expect(describeFolder('generated')?.requires).toBeUndefined()
+  })
+})
+

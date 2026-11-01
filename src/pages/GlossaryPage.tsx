@@ -55,7 +55,7 @@ function TermCard({
       tabIndex={-1}
       data-highlighted={highlighted || undefined}
       className={cn(
-        'flex scroll-mt-48 flex-col rounded-2xl border bg-surface p-5 shadow-sm transition-[box-shadow,border-color] duration-500 focus-visible:outline-none',
+        'flex scroll-mt-48 flex-col rounded-2xl border bg-surface p-5 shadow-sm transition-[box-shadow,border-color] duration-500 focus-visible:outline-hidden',
         highlighted ? 'border-brand ring-4 ring-brand/25' : 'border-line',
       )}
     >
@@ -215,7 +215,7 @@ export default function GlossaryPage() {
   return (
     <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <header>
-        <h1 className="flex items-center gap-3 text-3xl font-semibold tracking-tight text-ink">
+        <h1 tabIndex={-1} className="flex items-center gap-3 text-3xl font-semibold tracking-tight text-ink outline-none">
           <span aria-hidden>📘</span> Glossary
         </h1>
         <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-ink-2">

@@ -125,13 +125,51 @@ function languageQuestion(a: RepoAnalysis, rng: Rng): QuizQuestion | null {
 
 const KIND_POOL: ProjectKindId[] = ['web-app', 'api-server', 'library', 'cli-tool', 'mobile-app', 'game', 'data-science', 'desktop-app', 'browser-extension', 'website']
 
+/**
+ * Words that tie a project to a kind of software. A project whose own description mentions them is (or helps build)
+ * that kind, so offering it as a wrong answer would mark a careful reader wrong: "a framework for building web
+ * applications" must not get "Web application" as a trap.
+ */
+const KIND_CLUES: Partial<Record<ProjectKindId, RegExp>> = {
+  'web-app': /\bweb\b|\bweb-?apps?\b|\bapplications?\b|\bfront-?end\b|\bbrowsers?\b|\bsites?\b|\bpages?\b|\w\.(com|org|net|io|dev|app)\b/i,
+  website: /\bweb\b|\bweb-?sites?\b|\bsites?\b|\bpages?\b|\bblogs?\b|\bstatic\b|\w\.(com|org|net|io|dev|app)\b/i,
+  'api-server': /\bweb\b|\bapis?\b|\brest(ful)?\b|\bhttp\b|\bservers?\b|\bback-?end\b|\bmicro-?services?\b|\bservices?\b|\brequests?\b/i,
+  'cli-tool': /\bcommand[- ]line\b|\bcli\b|\bterminal\b|\bconsole\b|\bshell\b/i,
+  'mobile-app': /\bmobile\b|\bios\b|\bandroid\b|\bphones?\b|\bapps?\b/i,
+  'desktop-app': /\bdesktop\b|\belectron\b|\bgui\b|\bapps?\b|\bapplications?\b/i,
+  'browser-extension': /\bextensions?\b|\bbrowsers?\b|\bchrome\b|\bfirefox\b|\badd-?ons?\b/i,
+  'data-science': /\bdata\b|\banalytics?\b|\banalysis\b|\bnotebooks?\b|\bstatistic|\bmachine learning\b/i,
+  game: /\bgames?\b|\bgaming\b|\bplay(er|ers)?\b/i,
+}
+
+/** The project's own words about itself: its GitHub description and the start of its README. */
+function selfDescription(a: RepoAnalysis): string {
+  const readme = (a.readme?.content ?? '')
+    .slice(0, 2000)
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ') // pictures and badges
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links → their words
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .split(/\n/)
+    .filter((l) => l.trim() && !/^\s*(#|```|\|)/.test(l))
+    .slice(0, 6)
+    .join(' ')
+  return `${a.meta.description ?? ''} ${readme}`
+}
+
+/** Kinds that make fair wrong answers for this project: never its own, and never one its description points to. */
+export function kindDistractors(a: RepoAnalysis, correct: ProjectKindId): ProjectKindId[] {
+  const text = selfDescription(a)
+  return KIND_POOL.filter((k) => k !== correct && !KIND_CLUES[k]?.test(text))
+}
+
 function kindQuestion(a: RepoAnalysis, rng: Rng): QuizQuestion | null {
   const kind = a.projectKind
   if (!kind || kind.id === 'unknown' || kind.confidence < 0.3) return null
   const info = PROJECT_KIND_INFO[kind.id]
   const label = kind.label || info.label
   const wrong = shuffle(
-    KIND_POOL.filter((k) => k !== kind.id).map((k) => PROJECT_KIND_INFO[k].label),
+    kindDistractors(a, kind.id).map((k) => PROJECT_KIND_INFO[k].label),
     rng,
   )
   const reason = kind.reasons[0] ? ` One clue: ${lowerFirst(kind.reasons[0]).replace(/\.?$/, '.')}` : ''

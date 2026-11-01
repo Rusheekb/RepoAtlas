@@ -132,6 +132,26 @@ describe('stripComments — C-style languages', () => {
     expect(out).toContain('#"a "// b" c"#')
     expect(out).not.toContain('// d')
   })
+
+  it('reads runs of # in Swift once, still finding raw strings and directives', () => {
+    const src = '#if DEBUG // on\nlet t = ##"x"# "// y"##\n### // z\n#endif\n'
+    const out = stripComments(src, 'Swift')
+    expect(out).toContain('#if DEBUG')
+    expect(out).not.toContain('// on')
+    expect(out).toContain('##"x"# "// y"##')
+    expect(out).not.toContain('// z')
+    const t0 = performance.now()
+    stripComments('#'.repeat(100_000), 'Swift')
+    expect(performance.now() - t0).toBeLessThan(100)
+  })
+
+  it('gives up on an unclosed regex literal for the rest of its line only', () => {
+    const src = 'const a = [/ x\nconst r = (/"/)\nconst s = "// not a comment"\n'
+    expect(stripComments(src, 'JavaScript')).toContain('"// not a comment"')
+    const t0 = performance.now()
+    maskSource('[/'.repeat(50_000), 'JavaScript')
+    expect(performance.now() - t0).toBeLessThan(100)
+  })
 })
 
 describe('stripComments — hash, dash and others', () => {

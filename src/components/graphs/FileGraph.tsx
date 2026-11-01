@@ -31,6 +31,35 @@ export interface FileGraphProps {
   seenPaths?: string[]
   /** Maximum number of cards (default 120). */
   maxNodes?: number
+  /** Width ÷ height of the space the map is shown in, so files that use nothing else are laid out to fill it. */
+  aspect?: number
+}
+
+export interface FileGraphOptions {
+  allFiles?: Record<string, AnalyzedFile>
+  showNeighbors?: boolean
+  direction?: 'LR' | 'TB'
+  maxNodes?: number
+  aspect?: number
+}
+
+/** Which files a file map shows and how they are laid out (pure; also used to pick the arrow direction that fits best). */
+export function buildFileGraphLayout(files: readonly AnalyzedFile[], edges: readonly FileEdge[], opts: FileGraphOptions = {}) {
+  const direction = opts.direction ?? 'LR'
+  const sel = selectFileGraph(files, edges, { cap: opts.maxNodes ?? FILE_GRAPH_CAP, showNeighbors: opts.showNeighbors, allFiles: opts.allFiles })
+  const ids = [...sel.main, ...sel.neighbors]
+  const layout = layoutLayered(
+    ids.map((id) => ({ id, width: FILE_NODE_WIDTH, height: FILE_NODE_HEIGHT })),
+    sel.edges,
+    {
+      direction,
+      nodesep: direction === 'LR' ? 16 : 28,
+      ranksep: direction === 'LR' ? 80 : 60,
+      gridGap: 16,
+      targetAspect: opts.aspect,
+    },
+  )
+  return { sel, ids, layout }
 }
 
 const nodeTypes: NodeTypes = { file: FileNode }
@@ -75,18 +104,15 @@ export function FileGraph({
   direction = 'LR',
   seenPaths,
   maxNodes = FILE_GRAPH_CAP,
+  aspect,
 }: FileGraphProps) {
+  // Only the rough shape of the space matters for the layout: don't re-lay out on every pixel of a resize.
+  const shape = aspect && Number.isFinite(aspect) ? Math.round(Math.min(3, Math.max(0.5, aspect)) * 4) / 4 : undefined
   const graph = useMemo(() => {
-    const sel = selectFileGraph(files, edges, { cap: maxNodes, showNeighbors, allFiles })
+    const { sel, ids, layout } = buildFileGraphLayout(files, edges, { allFiles, showNeighbors, direction, maxNodes, aspect: shape })
     const byPath = new Map(files.map((f) => [f.path, f]))
     const fileOf = (p: string) => byPath.get(p) ?? allFiles?.[p] ?? placeholderFile(p)
-    const ids = [...sel.main, ...sel.neighbors]
     const neighborSet = new Set(sel.neighbors)
-    const layout = layoutLayered(
-      ids.map((id) => ({ id, width: FILE_NODE_WIDTH, height: FILE_NODE_HEIGHT })),
-      sel.edges,
-      { direction, nodesep: direction === 'LR' ? 16 : 28, ranksep: direction === 'LR' ? 80 : 60, gridGap: 16 },
-    )
     const nodes: FileFlowNode[] = ids.map((id) => {
       const f = fileOf(id)
       const neighbor = neighborSet.has(id)
@@ -126,9 +152,9 @@ export function FileGraph({
       neighbors: buildNeighbors(sel.edges),
       layers: LAYERS.filter((l) => present.has(l)),
       fileOf,
-      key: `${direction}|${ids.join(',')}|${sel.edges.length}`,
+      key: `${direction}|${shape ?? ''}|${ids.join(',')}|${sel.edges.length}`,
     }
-  }, [files, edges, allFiles, showNeighbors, direction, maxNodes])
+  }, [files, edges, allFiles, showNeighbors, direction, maxNodes, shape])
 
   const tooltipFor = useCallback(
     (id: string): TooltipContent | null => {
@@ -184,21 +210,24 @@ export function FileGraph({
       onOpen={onOpen}
       tooltipFor={tooltipFor}
       layoutKey={graph.key}
-      fitNodeIds={graph.nodes.length > 36 ? sel.main.slice(0, 24) : undefined}
+      focusRank={sel.main}
+      overviewLabel={sel.hiddenMain > 0 ? 'Show the whole map' : `Show all ${formatNumber(graph.nodes.length)} files`}
       showMiniMap={graph.nodes.length > 30}
       miniMapColor={(n) => LAYER_INFO[n.data.file.layer]?.color ?? 'var(--layer-other)'}
-      panel={
-        <div className="space-y-1.5">
-          {graph.layers.length >= 2 && <LayerLegend layers={graph.layers} />}
-          <p className="text-[11px] text-ink-3">
-            Arrows point from a file to the file it uses.
-            {sel.neighbors.length > 0 && ' Faded cards with dashed borders live in other parts of the project.'}
-          </p>
-          {notes.map((n) => (
-            <p key={n} className="text-[11px] font-medium text-ink-2">
-              {n}
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1.5">
+          {graph.layers.length >= 2 ? <LayerLegend layers={graph.layers} /> : <span />}
+          <div className="space-y-0.5 text-xs">
+            <p className="text-ink-3">
+              Arrows point from a file to the file it uses.
+              {sel.neighbors.length > 0 && ' Faded cards with dashed borders live in other parts of the project.'}
             </p>
-          ))}
+            {notes.map((n) => (
+              <p key={n} className="font-medium text-ink-2">
+                {n}
+              </p>
+            ))}
+          </div>
         </div>
       }
     />

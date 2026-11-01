@@ -1,3 +1,4 @@
+// The home page imports kit components from their own files (not this barrel), so it never downloads the markdown renderer.
 export { cn } from './cn'
 export { Button, IconButton, type ButtonProps } from './Button'
 export { Card, CardHeader, CardBody } from './Card'
@@ -6,4 +7,4 @@ export { Spinner } from './Spinner'
 export { EmptyState } from './EmptyState'
 export { Segmented } from './Segmented'
 export { Modal } from './Modal'
-export { Markdown, type MarkdownProps } from './Markdown'
+export { Markdown, MarkdownImageSources, isAllowedImage, type MarkdownProps } from './Markdown'

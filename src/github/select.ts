@@ -54,13 +54,77 @@ const VENDORED_DIRS = new Set([
 
 /** Folders holding machine-made output (build results, caches, coverage reports …). */
 const GENERATED_DIRS = new Set([
-  'dist', 'build', 'out', '.next', '.nuxt', '.output', '.svelte-kit', '.astro', '.vercel', '.netlify', '.serverless', '.docusaurus',
-  '.expo', '.angular', '.turbo', '.cache', '.parcel-cache', '.webpack', '.vite', 'target', '__pycache__', '.mypy_cache', '.pytest_cache',
-  '.ruff_cache', '.tox', '.nox', '.eggs', '.ipynb_checkpoints', 'coverage', '.nyc_output', 'htmlcov', '.git', '.hg', '.svn', '.idea',
+  'dist', '.next', '.nuxt', '.output', '.svelte-kit', '.astro', '.vercel', '.netlify', '.serverless', '.docusaurus',
+  '.expo', '.angular', '.turbo', '.cache', '.parcel-cache', '.webpack', '.vite', '__pycache__', '.mypy_cache', '.pytest_cache',
+  '.ruff_cache', '.tox', '.nox', '.eggs', '.ipynb_checkpoints', '.nyc_output', 'htmlcov', '.git', '.hg', '.svn', '.idea',
   '.gradle', '.dart_tool', 'deriveddata', '.terraform', '.terragrunt-cache', 'storybook-static', '_site', '.jekyll-cache',
   '.stack-work', 'dist-newstyle', 'zig-cache', '.zig-cache', 'zig-out', '__generated__', '.history', '.sass-cache',
-  'obj',
 ])
+
+/**
+ * Folder names that are build output only some of the time: a top-level build/ usually is, but src/build/ is often a
+ * real package (pypa/build), as are Go's internal/build/ or a Java package …/aop/target/.
+ * Each counts as output at the top level, or deeper when a sibling settings file says a tool writes there
+ * (target/ next to Cargo.toml or pom.xml, obj/ next to a .csproj, build/ next to package.json or build.gradle …).
+ * Same idea as the "generated" zone in src/analysis/structure/zones.ts.
+ */
+const AMBIGUOUS_OUTPUT_DIRS: Record<string, readonly string[]> = {
+  build: ['package.json', 'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', 'cmakelists.txt', 'setup.py', 'pyproject.toml', 'pubspec.yaml', 'meson.build'],
+  out: ['package.json', 'build.gradle', 'build.gradle.kts', 'tsconfig.json'],
+  target: ['cargo.toml', 'pom.xml', 'build.sbt', 'project.clj'],
+  obj: ['.csproj', '.fsproj', '.vbproj'],
+  coverage: ['package.json', 'pyproject.toml', 'setup.py', 'setup.cfg', 'tox.ini', 'go.mod', 'gemfile', 'phpunit.xml', 'phpunit.xml.dist'],
+}
+
+/** Files that make a folder a real package of code, so it is never build output whatever its name. */
+const PACKAGE_MARKERS = ['__init__.py', 'package.json', 'cargo.toml', 'go.mod', 'pyproject.toml', 'setup.py', 'pom.xml', 'build.gradle', 'build.gradle.kts']
+
+/**
+ * What the rest of the tree says about a folder (built once per tree by skipContext()).
+ * Without it, skipReasonFor() only treats the ambiguous output names (build, out, target, obj, coverage) as output at
+ * the top level.
+ */
+export interface SkipContext {
+  /** Every path in the tree, lower-cased. */
+  lowerPaths: Set<string>
+  /** Lower-cased folders that directly hold a .csproj / .fsproj / .vbproj (or other extension-only marker). */
+  dirsWithExt: Map<string, Set<string>>
+}
+
+/** Index a tree for skipReasonFor(). */
+export function skipContext(tree: readonly TreeEntry[]): SkipContext {
+  const lowerPaths = new Set<string>()
+  const dirsWithExt = new Map<string, Set<string>>()
+  for (const e of tree) {
+    if (!e.path) continue
+    const lower = e.path.toLowerCase()
+    lowerPaths.add(lower)
+    const slash = lower.lastIndexOf('/')
+    const dot = lower.lastIndexOf('.')
+    if (dot > slash) {
+      const ext = lower.slice(dot)
+      if (ext === '.csproj' || ext === '.fsproj' || ext === '.vbproj') {
+        const dir = slash === -1 ? '' : lower.slice(0, slash)
+        let set = dirsWithExt.get(dir)
+        if (!set) dirsWithExt.set(dir, (set = new Set()))
+        set.add(ext)
+      }
+    }
+  }
+  return { lowerPaths, dirsWithExt }
+}
+
+/** Whether the ambiguous folder at segments[0..i] holds build output. */
+function isAmbiguousOutput(lowerSegs: string[], i: number, ctx: SkipContext | undefined): boolean {
+  const markers = AMBIGUOUS_OUTPUT_DIRS[lowerSegs[i]]
+  if (!markers) return false
+  if (!ctx) return i === 0
+  const dir = lowerSegs.slice(0, i + 1).join('/')
+  if (PACKAGE_MARKERS.some((m) => ctx.lowerPaths.has(`${dir}/${m}`))) return false
+  if (i === 0) return true
+  const parent = lowerSegs.slice(0, i).join('/')
+  return markers.some((m) => (m.startsWith('.') ? ctx.dirsWithExt.get(parent)?.has(m) : ctx.lowerPaths.has(`${parent}/${m}`)))
+}
 
 /** Basename patterns for generated / minified files. */
 const GENERATED_FILE_RES: RegExp[] = [
@@ -88,17 +152,19 @@ function isGeneratedDir(segLower: string): boolean {
 /**
  * Why a file should never be downloaded, or null if it may be.
  * Order matters: folder rules first (most informative), then lockfiles, generated names, binaries, size.
+ * Pass `ctx` (from skipContext(tree)) so folders like build/ or target/ are judged by what sits next to them.
  */
-export function skipReasonFor(entry: TreeEntry): SkipReason | null {
+export function skipReasonFor(entry: TreeEntry, ctx?: SkipContext): SkipReason | null {
   const path = entry.path
   const segments = path.split('/')
+  const lowerSegs = path.toLowerCase().split('/')
   const name = segments[segments.length - 1]
   const lower = name.toLowerCase()
 
   for (let i = 0; i < segments.length - 1; i++) {
-    const seg = segments[i].toLowerCase()
+    const seg = lowerSegs[i]
     if (VENDORED_DIRS.has(seg)) return 'vendored'
-    if (isGeneratedDir(seg)) return 'generated'
+    if (isGeneratedDir(seg) || isAmbiguousOutput(lowerSegs, i, ctx)) return 'generated'
     // .NET build output: bin/Debug, bin/Release
     if (seg === 'bin' && i + 1 < segments.length - 1) {
       const nextSeg = segments[i + 1].toLowerCase()
@@ -508,7 +574,8 @@ function orderCandidates(cands: Candidate[], maxFiles: number): Candidate[] {
  * source code (shallower first, spread across folders so every area is represented) → tests/docs.
  *
  * Never download: binaries/media (by extension), files > 512 KB, lockfiles, vendored/generated folders
- * (node_modules, vendor, dist, build, .next, target, __pycache__, coverage, *.min.js, *.map, generated protobufs …).
+ * (node_modules, vendor, dist, .next, __pycache__, *.min.js, *.map, generated protobufs …; build, out, target, obj and
+ * coverage only at the top level or next to the settings file of the tool that writes them, see skipContext).
  * Those go to `skipped` with a reason. Files beyond the limit get reason 'limit'.
  *
  * Empty (0-byte) files are listed in `fetch` without counting toward the limits: they cost nothing to "read".
@@ -522,11 +589,12 @@ export function selectFilesToFetch(
   const skipped: { path: string; reason: SkipReason }[] = []
   const cands: Candidate[] = []
   const seen = new Set<string>()
+  const ctx = skipContext(tree)
 
   for (const entry of tree) {
     if (!entry.path || seen.has(entry.path)) continue
     seen.add(entry.path)
-    const reason = skipReasonFor(entry)
+    const reason = skipReasonFor(entry, ctx)
     if (reason) skipped.push({ path: entry.path, reason })
     else cands.push(classify(entry))
   }
