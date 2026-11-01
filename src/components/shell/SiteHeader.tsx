@@ -8,7 +8,7 @@ import { GitHubMark } from './bits'
 import { Wordmark } from './Logo'
 import { ThemeToggle } from './ThemeToggle'
 
-export const PROJECT_URL = 'https://github.com/Rusheekb/Explain-everything'
+export const PROJECT_URL = 'https://github.com/Rusheekb/RepoAtlas'
 
 /**
  * Light header used outside a loaded repository (home page, loading and error screens):

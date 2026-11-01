@@ -4,7 +4,7 @@
 
 RepoAtlas turns any public GitHub repository into maps, diagrams and friendly explanations, so people with *no programming background* can understand what's going on under the hood — and anyone can learn a new codebase much faster.
 
-**▶ Use it now: https://rusheekb.github.io/Explain-everything/**
+**▶ Use it now: https://rusheekb.github.io/RepoAtlas/**
 
 Paste a link like `github.com/pallets/flask` and explore.
 

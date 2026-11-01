@@ -42,5 +42,5 @@ export const EXAMPLE_REPOS: ExampleRepo[] = [
   { owner: 'gin-gonic', repo: 'gin', name: 'Gin', blurb: 'A fast web framework in Go', emoji: '🍸' },
   { owner: 'httpie', repo: 'cli', name: 'HTTPie', blurb: 'A friendly command-line tool', emoji: '⌨️' },
   { owner: 'excalidraw', repo: 'excalidraw', name: 'Excalidraw', blurb: 'A virtual whiteboard (big!)', emoji: '✏️' },
-  { owner: 'Rusheekb', repo: 'Explain-everything', name: 'RepoAtlas itself', blurb: 'The code behind this very app', emoji: '🗺️' },
+  { owner: 'Rusheekb', repo: 'RepoAtlas', name: 'RepoAtlas itself', blurb: 'The code behind this very app', emoji: '🗺️' },
 ]
