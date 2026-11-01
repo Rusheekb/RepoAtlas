@@ -1,0 +1,6 @@
+export * from './types'
+export { TECH_CATALOG } from './tech'
+export { parseManifests } from './manifests'
+export { detectTechStack, lookupPackage, getTech, type DetectTechInput } from './detectTech'
+export { GLOSSARY, getTerm, findRelevantTerms, findTermsInText } from './glossary'
+export { FOLDER_ROLES, describeFolder } from './folders'

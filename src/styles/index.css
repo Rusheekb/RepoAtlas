@@ -1,0 +1,179 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+/* Dark mode is driven by data-theme on <html> (resolved from the user's setting). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * Design tokens. Components use the semantic utilities (bg-canvas, text-ink, border-line …)
+ * so both themes switch in one place. Layer colors are the validated categorical palette
+ * (fixed order, light + dark steps) and are used for every "kind of code" encoding.
+ */
+:root {
+  color-scheme: light;
+  --canvas: #f6f5f2;
+  --surface: #ffffff;
+  --surface-2: #f1f0ec;
+  --surface-3: #e8e6e0;
+  --line: #e2e0d9;
+  --line-strong: #cfccc3;
+  --ink: #1a1a19;
+  --ink-2: #52514e;
+  --ink-3: #75736d;
+  --brand: #4338ca;
+  --brand-hover: #3730a3;
+  --brand-soft: #eef0ff;
+  --brand-ink: #ffffff;
+  --brand-text: #3b34b5;
+  --focus: #4338ca;
+  --good: #0ca30c;
+  --good-text: #006300;
+  --warn: #fab219;
+  --warn-text: #8a5a00;
+  --bad: #d03b3b;
+  --bad-text: #b42323;
+
+  --layer-ui: #2a78d6;
+  --layer-api: #eb6834;
+  --layer-logic: #1baf7a;
+  --layer-data: #eda100;
+  --layer-test: #e87ba4;
+  --layer-config: #008300;
+  --layer-docs: #6250d6;
+  --layer-infra: #e34948;
+  --layer-other: #9b9a94;
+
+  --shadow-sm: 0 1px 2px rgb(20 20 19 / 0.06), 0 1px 1px rgb(20 20 19 / 0.04);
+  --shadow-md: 0 4px 12px rgb(20 20 19 / 0.08), 0 1px 3px rgb(20 20 19 / 0.06);
+  --shadow-lg: 0 16px 40px rgb(20 20 19 / 0.14), 0 2px 8px rgb(20 20 19 / 0.08);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #121211;
+  --surface: #1a1a19;
+  --surface-2: #222220;
+  --surface-3: #2c2c2a;
+  --line: #31312e;
+  --line-strong: #44443f;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --ink-3: #9a998f;
+  --brand: #8b8cf6;
+  --brand-hover: #a5a6fa;
+  --brand-soft: #24244a;
+  --brand-ink: #11112a;
+  --brand-text: #b4b5fb;
+  --focus: #a5a6fa;
+  --good: #0ca30c;
+  --good-text: #5fd35f;
+  --warn: #fab219;
+  --warn-text: #fac65a;
+  --bad: #d03b3b;
+  --bad-text: #f08080;
+
+  --layer-ui: #3987e5;
+  --layer-api: #d95926;
+  --layer-logic: #199e70;
+  --layer-data: #c98500;
+  --layer-test: #d55181;
+  --layer-config: #008300;
+  --layer-docs: #9085e9;
+  --layer-infra: #e66767;
+  --layer-other: #6f6e68;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 16px 40px rgb(0 0 0 / 0.55);
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-text: var(--brand-text);
+  --color-good: var(--good);
+  --color-good-text: var(--good-text);
+  --color-warn: var(--warn);
+  --color-warn-text: var(--warn-text);
+  --color-bad: var(--bad);
+  --color-bad-text: var(--bad-text);
+
+  --color-layer-ui: var(--layer-ui);
+  --color-layer-api: var(--layer-api);
+  --color-layer-logic: var(--layer-logic);
+  --color-layer-data: var(--layer-data);
+  --color-layer-test: var(--layer-test);
+  --color-layer-config: var(--layer-config);
+  --color-layer-docs: var(--layer-docs);
+  --color-layer-infra: var(--layer-infra);
+  --color-layer-other: var(--layer-other);
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+::selection { background: color-mix(in srgb, var(--brand) 25%, transparent); }
+
+/* Prose styling for AI / markdown explanations. */
+.prose-atlas { line-height: 1.65; font-size: 0.975rem; color: var(--ink); }
+.prose-atlas > * + * { margin-top: 0.75em; }
+.prose-atlas h1, .prose-atlas h2, .prose-atlas h3, .prose-atlas h4 { font-weight: 650; line-height: 1.3; color: var(--ink); }
+.prose-atlas h1 { font-size: 1.5rem; margin-top: 1.4em; }
+.prose-atlas h2 { font-size: 1.2rem; margin-top: 1.4em; }
+.prose-atlas h3 { font-size: 1.05rem; margin-top: 1.2em; }
+.prose-atlas h4 { font-size: 0.975rem; margin-top: 1em; }
+.prose-atlas > :first-child { margin-top: 0; }
+.prose-atlas ul, .prose-atlas ol { padding-left: 1.4em; }
+.prose-atlas ul { list-style: disc; }
+.prose-atlas ol { list-style: decimal; }
+.prose-atlas li + li { margin-top: 0.3em; }
+.prose-atlas a { color: var(--brand-text); text-decoration: underline; text-underline-offset: 2px; }
+.prose-atlas strong { font-weight: 650; }
+.prose-atlas code { font-family: var(--font-mono); font-size: 0.86em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 0.08em 0.35em; }
+.prose-atlas pre { font-family: var(--font-mono); font-size: 0.84rem; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 0.9em 1em; overflow-x: auto; line-height: 1.55; }
+.prose-atlas pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+.prose-atlas blockquote { border-left: 3px solid var(--brand); padding: 0.2em 0 0.2em 1em; color: var(--ink-2); background: var(--brand-soft); border-radius: 0 8px 8px 0; }
+.prose-atlas table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.prose-atlas th, .prose-atlas td { border: 1px solid var(--line); padding: 0.45em 0.65em; text-align: left; vertical-align: top; }
+.prose-atlas th { background: var(--surface-2); font-weight: 600; }
+.prose-atlas hr { border: 0; border-top: 1px solid var(--line); margin: 1.5em 0; }
+.prose-atlas img { max-width: 100%; border-radius: 8px; }
+
+/* Shiki dual-theme support: tokens carry --shiki-light / --shiki-dark variables. */
+.shiki, .shiki span { color: var(--shiki-light); background-color: transparent !important; }
+[data-theme="dark"] .shiki, [data-theme="dark"] .shiki span { color: var(--shiki-dark); }
+
+@keyframes atlas-pulse { 0%, 100% { opacity: .45 } 50% { opacity: 1 } }
+.animate-atlas-pulse { animation: atlas-pulse 1.4s ease-in-out infinite; }
+@keyframes atlas-caret { 0%, 100% { opacity: 1 } 50% { opacity: 0 } }
+.ai-caret::after { content: "▍"; margin-left: 2px; color: var(--brand); animation: atlas-caret 1s steps(1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
