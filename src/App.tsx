@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { createHashRouter, Navigate, RouterProvider } from 'react-router'
 import HomePage from '@/pages/HomePage'
-import RepoLayout from '@/pages/RepoLayout'
 import { applyTheme, useSettings } from '@/state/settings'
 import { Spinner } from '@/components/ui'
 
+const RepoLayout = lazy(() => import('@/pages/RepoLayout'))
 const OverviewPage = lazy(() => import('@/pages/OverviewPage'))
 const ArchitecturePage = lazy(() => import('@/pages/ArchitecturePage'))
 const CodeMapPage = lazy(() => import('@/pages/CodeMapPage'))
@@ -29,7 +29,7 @@ const router = createHashRouter([
   { path: '/', element: <HomePage /> },
   {
     path: '/gh/:owner/:repo',
-    element: <RepoLayout />,
+    element: page(<RepoLayout />),
     children: [
       { index: true, element: page(<OverviewPage />) },
       { path: 'map', element: page(<ArchitecturePage />) },
