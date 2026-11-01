@@ -1,0 +1,151 @@
+import { detectLanguage, familyForPath, isCodeLanguage, languageByName, languageColor, languageFamily } from './languages'
+
+const name = (p: string) => detectLanguage(p)?.name ?? null
+
+describe('detectLanguage', () => {
+  it('maps common extensions to linguist names and colors', () => {
+    expect(detectLanguage('src/a.ts')).toEqual({ name: 'TypeScript', color: '#3178c6', isCode: true })
+    expect(detectLanguage('src/App.tsx')).toEqual({ name: 'TSX', color: '#3178c6', isCode: true })
+    expect(detectLanguage('index.js')).toEqual({ name: 'JavaScript', color: '#f1e05a', isCode: true })
+    expect(detectLanguage('main.py')?.color).toBe('#3572A5')
+    expect(detectLanguage('main.go')?.color).toBe('#00ADD8')
+    expect(detectLanguage('lib.rs')?.color).toBe('#dea584')
+    expect(detectLanguage('App.java')?.color).toBe('#b07219')
+    expect(detectLanguage('App.kt')?.color).toBe('#A97BFF')
+    expect(detectLanguage('Program.cs')).toMatchObject({ name: 'C#', color: '#178600' })
+    expect(detectLanguage('a.cpp')).toMatchObject({ name: 'C++', color: '#f34b7d' })
+    expect(detectLanguage('a.c')).toMatchObject({ name: 'C', color: '#555555' })
+    expect(detectLanguage('a.rb')?.color).toBe('#701516')
+    expect(detectLanguage('a.php')?.color).toBe('#4F5D95')
+    expect(detectLanguage('a.swift')?.color).toBe('#F05138')
+    expect(detectLanguage('a.dart')?.color).toBe('#00B4AB')
+    expect(detectLanguage('a.html')?.color).toBe('#e34c26')
+    expect(detectLanguage('a.css')?.color).toBe('#663399')
+    expect(detectLanguage('a.scss')?.color).toBe('#c6538c')
+    expect(detectLanguage('a.sh')?.color).toBe('#89e051')
+    expect(detectLanguage('App.vue')?.color).toBe('#41b883')
+    expect(detectLanguage('App.svelte')?.color).toBe('#ff3e00')
+    expect(detectLanguage('README.md')).toEqual({ name: 'Markdown', color: '#083fa1', isCode: false })
+    expect(detectLanguage('package.json')).toEqual({ name: 'JSON', color: '#292929', isCode: false })
+    expect(detectLanguage('ci.yml')).toEqual({ name: 'YAML', color: '#cb171e', isCode: false })
+    expect(detectLanguage('analysis.ipynb')).toMatchObject({ name: 'Jupyter Notebook', color: '#DA5B0B' })
+  })
+
+  it('is case-insensitive on extensions', () => {
+    expect(name('script.R')).toBe('R')
+    expect(name('MAIN.PY')).toBe('Python')
+    expect(name('Photo.JPG')).toBeNull()
+  })
+
+  it('handles special basenames', () => {
+    expect(name('Dockerfile')).toBe('Dockerfile')
+    expect(name('docker/Dockerfile.prod')).toBe('Dockerfile')
+    expect(name('dev.Dockerfile')).toBe('Dockerfile')
+    expect(name('Containerfile')).toBe('Dockerfile')
+    expect(name('Makefile')).toBe('Makefile')
+    expect(name('GNUmakefile')).toBe('Makefile')
+    expect(name('CMakeLists.txt')).toBe('CMake')
+    expect(name('Gemfile')).toBe('Ruby')
+    expect(name('Rakefile')).toBe('Ruby')
+    expect(name('ios/Podfile')).toBe('Ruby')
+    expect(name('Vagrantfile')).toBe('Ruby')
+    expect(name('Jenkinsfile')).toBe('Groovy')
+    expect(name('Procfile')).toBe('Procfile')
+    expect(name('.bashrc')).toBe('Shell')
+    expect(name('.zshrc')).toBe('Shell')
+    expect(name('BUILD')).toBe('Starlark')
+    expect(name('WORKSPACE')).toBe('Starlark')
+    expect(name('BUILD.bazel')).toBe('Starlark')
+    expect(name('src/types.d.ts')).toBe('TypeScript')
+    expect(name('build.gradle.kts')).toBe('Kotlin')
+    expect(name('resources/views/home.blade.php')).toBe('Blade')
+    expect(name('.gitignore')).toBe('Ignore List')
+    expect(name('.env.local')).toBe('Dotenv')
+    expect(name('requirements-dev.txt')).toBe('Pip Requirements')
+    expect(name('go.mod')).toBe('Go Module')
+    expect(name('LICENSE')).toBe('Text')
+  })
+
+  it('treats lockfiles, prose, data and config formats as non-code', () => {
+    for (const p of ['package-lock.json', 'yarn.lock', 'Cargo.lock', 'poetry.lock', 'go.sum', 'README.md', 'a.json', 'a.yaml', 'a.toml', 'a.xml', 'a.ini', 'a.csv', 'notes.txt', '.env']) {
+      expect(detectLanguage(p)?.isCode).toBe(false)
+    }
+    for (const p of ['a.html', 'a.css', 'a.ts', 'a.sql', 'Dockerfile', 'a.ipynb']) {
+      expect(detectLanguage(p)?.isCode).toBe(true)
+    }
+  })
+
+  it('returns null for unknown and binary types', () => {
+    expect(detectLanguage('logo.png')).toBeNull()
+    expect(detectLanguage('font.woff2')).toBeNull()
+    expect(detectLanguage('bin/tool')).toBeNull()
+    expect(detectLanguage('.gitkeep')).toBeNull()
+    expect(detectLanguage('')).toBeNull()
+    expect(detectLanguage('weird.')).toBeNull()
+  })
+
+  it('covers a wide range of languages', () => {
+    const exts = 'ts tsx js jsx mjs cjs vue svelte astro py go rs java kt scala groovy c cpp cs fs swift m rb php dart ex erl hs ml clj lua r jl pl sh ps1 zig nim sol sql graphql proto html css scss sass less md mdx rst json yaml toml xml ini tf nix ipynb'
+    for (const e of exts.split(' ')) expect(detectLanguage(`file.${e}`), e).not.toBeNull()
+  })
+})
+
+describe('languageColor, isCodeLanguage, languageByName', () => {
+  it('looks up by display name case-insensitively, with a neutral fallback', () => {
+    expect(languageColor('TypeScript')).toBe('#3178c6')
+    expect(languageColor('python')).toBe('#3572A5')
+    expect(languageColor('Klingon')).toBe('#9b9a94')
+    expect(isCodeLanguage('Go')).toBe(true)
+    expect(isCodeLanguage('Markdown')).toBe(false)
+    expect(isCodeLanguage(null)).toBe(false)
+    expect(languageByName('c#')).toEqual({ name: 'C#', color: '#178600', isCode: true })
+    expect(languageByName('nope')).toBeNull()
+  })
+})
+
+describe('languageFamily', () => {
+  it('groups display names into families', () => {
+    expect(languageFamily('TypeScript')).toBe('js')
+    expect(languageFamily('TSX')).toBe('js')
+    expect(languageFamily('JavaScript')).toBe('js')
+    expect(languageFamily('Vue')).toBe('js')
+    expect(languageFamily('Svelte')).toBe('js')
+    expect(languageFamily('Astro')).toBe('js')
+    expect(languageFamily('Python')).toBe('python')
+    expect(languageFamily('Jupyter Notebook')).toBe('python')
+    expect(languageFamily('Go')).toBe('go')
+    expect(languageFamily('Rust')).toBe('rust')
+    expect(languageFamily('Java')).toBe('jvm')
+    expect(languageFamily('Kotlin')).toBe('jvm')
+    expect(languageFamily('Scala')).toBe('jvm')
+    expect(languageFamily('C#')).toBe('csharp')
+    expect(languageFamily('C')).toBe('c')
+    expect(languageFamily('C++')).toBe('c')
+    expect(languageFamily('Objective-C')).toBe('c')
+    expect(languageFamily('Ruby')).toBe('ruby')
+    expect(languageFamily('PHP')).toBe('php')
+    expect(languageFamily('Swift')).toBe('swift')
+    expect(languageFamily('Dart')).toBe('dart')
+    expect(languageFamily('Elixir')).toBe('elixir')
+    expect(languageFamily('Lua')).toBe('lua')
+    expect(languageFamily('R')).toBe('r')
+    expect(languageFamily('Shell')).toBe('shell')
+    expect(languageFamily('SCSS')).toBe('css')
+    expect(languageFamily('CSS')).toBe('css')
+    expect(languageFamily('HTML')).toBe('html')
+    expect(languageFamily('Markdown')).toBe('other')
+    expect(languageFamily('Haskell')).toBe('other')
+    expect(languageFamily(null)).toBe('other')
+    expect(languageFamily('')).toBe('other')
+    expect(languageFamily('Klingon')).toBe('other')
+  })
+
+  it('accepts family ids and common aliases', () => {
+    expect(languageFamily('js')).toBe('js')
+    expect(languageFamily('python')).toBe('python')
+    expect(languageFamily('jsx')).toBe('js')
+    expect(languageFamily('bash')).toBe('shell')
+    expect(familyForPath('src/main.rs')).toBe('rust')
+    expect(familyForPath('README')).toBe('other')
+  })
+})

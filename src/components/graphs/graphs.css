@@ -1,0 +1,168 @@
+/*
+ * Visualization chrome, themed with RepoAtlas tokens. Every value is a CSS variable from src/styles/index.css,
+ * so light / dark themes switch automatically (data-theme on <html>).
+ */
+
+/* ── React Flow ─────────────────────────────────────────────────────────── */
+.atlas-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: var(--line-strong);
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-stroke-selected: var(--brand);
+  --xy-node-border-radius: 12px;
+  --xy-node-background-color: transparent;
+  --xy-node-border: none;
+  --xy-node-boxshadow-hover: none;
+  --xy-node-boxshadow-selected: none;
+  --xy-handle-background-color: transparent;
+  --xy-handle-border-color: transparent;
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--surface-2);
+  --xy-controls-button-color: var(--ink-2);
+  --xy-controls-button-color-hover: var(--ink);
+  --xy-controls-button-border-color: var(--line);
+  --xy-controls-box-shadow: var(--shadow-sm);
+  --xy-minimap-background-color: var(--surface);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--canvas) 72%, transparent);
+  --xy-minimap-mask-stroke-color: var(--line-strong);
+  --xy-minimap-mask-stroke-width: 1;
+  --xy-minimap-node-background-color: var(--surface-3);
+  --xy-edge-label-background-color: var(--surface);
+  --xy-edge-label-color: var(--ink-2);
+  --xy-attribution-background-color: transparent;
+  font-family: inherit;
+  color: var(--ink);
+}
+
+.atlas-flow .react-flow__node {
+  cursor: pointer;
+  border-radius: 12px;
+}
+.atlas-flow .react-flow__node:focus,
+.atlas-flow .react-flow__node:focus-visible {
+  outline: none;
+}
+.atlas-flow .react-flow__node:focus-visible > .atlas-node {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--focus);
+}
+
+.atlas-flow .react-flow__handle.atlas-handle {
+  top: 50%;
+  left: 50%;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.atlas-flow .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+.atlas-flow .react-flow__controls-button {
+  width: 32px;
+  height: 32px;
+  border-bottom: 1px solid var(--line);
+}
+.atlas-flow .react-flow__controls-button:last-child {
+  border-bottom: 0;
+}
+.atlas-flow .react-flow__controls-button svg {
+  max-width: 13px;
+  max-height: 13px;
+  fill: currentColor;
+}
+.atlas-flow .react-flow__controls-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.atlas-flow .react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.atlas-flow .react-flow__panel.atlas-flow-panel {
+  max-width: min(460px, calc(100% - 24px));
+  margin: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: var(--shadow-sm);
+  padding: 8px 12px;
+  backdrop-filter: blur(6px);
+}
+
+.atlas-flow .react-flow__edge {
+  cursor: default;
+}
+/* Relation labels sit above cards, so a label squeezed between two close cards stays readable. */
+.atlas-flow .react-flow__edgelabel-renderer {
+  z-index: 5;
+}
+.atlas-flow .react-flow__edge-interaction {
+  stroke-linecap: round;
+}
+
+@media (max-width: 640px) {
+  .atlas-flow .react-flow__minimap {
+    display: none;
+  }
+  .atlas-flow .react-flow__panel.atlas-flow-panel {
+    margin: 8px;
+    padding: 6px 10px;
+  }
+}
+
+/* ── Treemap ────────────────────────────────────────────────────────────── */
+.atlas-treemap .tm-item {
+  cursor: pointer;
+  outline: none;
+}
+.atlas-treemap .tm-tile:hover {
+  stroke: var(--ink-2);
+  stroke-width: 1.5px;
+}
+.atlas-treemap .tm-folder:hover {
+  stroke: var(--line-strong);
+  fill: var(--surface-2);
+}
+.atlas-treemap .tm-selected,
+.atlas-treemap .tm-selected:hover {
+  stroke: var(--ink);
+  stroke-width: 2.5px;
+}
+.atlas-treemap .tm-item:focus-visible {
+  stroke: var(--focus);
+  stroke-width: 3px;
+}
+.atlas-treemap .tm-label {
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-flow *,
+  .atlas-treemap *,
+  .atlas-tour * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .atlas-treemap .tm-tile {
+    stroke: CanvasText;
+    stroke-width: 1px;
+  }
+}

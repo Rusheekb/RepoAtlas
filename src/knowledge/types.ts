@@ -22,6 +22,14 @@ export interface TechKnowledgeEntry {
    *  - a pattern containing "/" matches a path prefix or glob (".github/workflows/*")
    */
   files?: string[]
+  /**
+   * Names that appear in source-code imports when they differ from the package name
+   * (Python `import sklearn` for scikit-learn, Java `org.springframework.boot`, PHP `Illuminate`).
+   * Dotted / slashed import paths also match by prefix ("sklearn.model_selection" → "sklearn").
+   */
+  imports?: Partial<Record<Ecosystem, string[]>>
+  /** Ids of technologies this one is built on and always brings along (Next.js → React). */
+  implies?: string[]
 }
 
 export interface DependencyRef {
@@ -31,6 +39,8 @@ export interface DependencyRef {
   dev: boolean
   /** Path of the manifest it came from. */
   source: string
+  /** The manifest section it was listed in ("dependencies", "devDependencies", "require-dev" …), for evidence strings. */
+  section?: string
 }
 
 export interface ManifestInfo {
