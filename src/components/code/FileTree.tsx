@@ -1,4 +1,10 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { Check, ChevronRight } from 'lucide-react'
+import { cn } from '@/components/ui/cn'
+import { formatNumber } from '@/core/format'
+import { LAYER_INFO, ROLE_INFO } from '@/core/labels'
 import type { AnalyzedFile } from '@/core/types'
+import { buildTree, filterFiles, FOLDER_PAGE_SIZE, foldersToReveal, matchRange, queryTerms, visibleRows, type TreeRow } from './fileTree'
 
 export interface FileTreeProps {
   files: AnalyzedFile[]
@@ -7,9 +13,325 @@ export interface FileTreeProps {
   /** Filter text. */
   query?: string
   className?: string
+  /** A folder (or file) to open up and scroll to, e.g. when arriving from "Read the code" on a module. */
+  revealPath?: string | null
+  /** Marks files the reader has already opened with a small tick. */
+  isSeen?: (path: string) => boolean
+  /** Accessible name of the tree (default "Project files"). */
+  label?: string
+}
+
+/** Search results are capped so a one-letter query can't put thousands of rows on the page. */
+export const MAX_SEARCH_ROWS = 1500
+const INDENT_PX = 14
+
+function fileEmoji(file: AnalyzedFile): string {
+  return file.isEntry ? ROLE_INFO.entry.emoji : (ROLE_INFO[file.role] ?? ROLE_INFO.other).emoji
+}
+
+function Highlighted({ name, terms }: { name: string; terms: readonly string[] }): ReactNode {
+  const m = terms.length ? matchRange(name, terms) : null
+  if (!m) return name
+  return (
+    <>
+      {name.slice(0, m.start)}
+      <mark className="rounded-[3px] bg-brand-soft px-px font-semibold text-brand-text">{name.slice(m.start, m.end)}</mark>
+      {name.slice(m.end)}
+    </>
+  )
 }
 
 /** Collapsible folder tree with role emoji + layer dot per file, folders auto-expanded to the selection, keyboard navigable. */
 export function FileTree(props: FileTreeProps) {
-  return <div className={props.className} data-testid="file-tree" />
+  const { files, selectedPath = null, onSelect, query = '', className, revealPath = null, isSeen, label = 'Project files' } = props
+
+  const fullTree = useMemo(() => buildTree(files), [files])
+  const terms = useMemo(() => queryTerms(query), [query])
+  const searching = terms.length > 0
+  const matches = useMemo(() => (searching ? filterFiles(files, query) : null), [files, query, searching])
+  const searchTree = useMemo(() => (matches ? buildTree(matches) : null), [matches])
+  const tree = searchTree ?? fullTree
+
+  // Folders the reader opened. A project whose top level is a single folder starts with it open.
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    const initial = new Set<string>(foldersToReveal(selectedPath))
+    if (fullTree.files.length === 0 && fullTree.folders.length === 1) initial.add(fullTree.folders[0].path)
+    return initial
+  })
+  // While searching every matching folder is open; these are the ones the reader closed anyway.
+  const [searchClosed, setSearchClosed] = useState<Set<string>>(() => new Set())
+  const [limits, setLimits] = useState<Map<string, number>>(() => new Map())
+  const [focusedPath, setFocusedPath] = useState<string | null>(null)
+
+  useEffect(() => setSearchClosed(new Set()), [query])
+
+  // Open the folders leading to the selected file (and to any folder we were asked to reveal).
+  useEffect(() => {
+    const open = [...foldersToReveal(selectedPath), ...(revealPath ? [...foldersToReveal(revealPath), revealPath] : [])]
+    if (!open.length) return
+    setExpanded((prev) => (open.every((p) => prev.has(p)) ? prev : new Set([...prev, ...open])))
+  }, [selectedPath, revealPath])
+
+  const isExpanded = useCallback((p: string) => (searching ? !searchClosed.has(p) : expanded.has(p)), [searching, searchClosed, expanded])
+
+  const allRows = useMemo(() => visibleRows(tree, isExpanded, limits), [tree, isExpanded, limits])
+  const rows = searching && allRows.length > MAX_SEARCH_ROWS ? allRows.slice(0, MAX_SEARCH_ROWS) : allRows
+  const truncatedSearch = rows.length < allRows.length
+
+  const indexByPath = useMemo(() => {
+    const m = new Map<string, number>()
+    rows.forEach((r, i) => m.set(r.path, i))
+    return m
+  }, [rows])
+
+  // The single row that's reachable with Tab (roving tabindex): the focused row, else the selection, else the first.
+  const tabPath =
+    (focusedPath && indexByPath.has(focusedPath) && focusedPath) ||
+    (selectedPath && indexByPath.has(selectedPath) && selectedPath) ||
+    rows[0]?.path ||
+    null
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const rowEls = useRef(new Map<string, HTMLLIElement>())
+  const setRowEl = useCallback((path: string, el: HTMLLIElement | null) => {
+    if (el) rowEls.current.set(path, el)
+    else rowEls.current.delete(path)
+  }, [])
+
+  /** Scroll the tree (only the tree, never the page) so a row is visible. */
+  const scrollRowIntoView = useCallback((path: string) => {
+    const box = scrollRef.current
+    const el = rowEls.current.get(path)
+    if (!box || !el || box.scrollHeight <= box.clientHeight) return
+    const top = el.offsetTop
+    const bottom = top + el.offsetHeight
+    if (top < box.scrollTop) box.scrollTop = Math.max(0, top - 8)
+    else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight + 8
+  }, [])
+
+  // Bring the selected file (or revealed folder) into view when it changes.
+  const target = revealPath && !selectedPath?.startsWith(`${revealPath}/`) ? revealPath : selectedPath
+  useLayoutEffect(() => {
+    if (target) scrollRowIntoView(target)
+  }, [target, scrollRowIntoView, rows.length])
+
+  const focusRow = useCallback(
+    (path: string) => {
+      setFocusedPath(path)
+      // Focus after React has rendered the row's new tabIndex.
+      requestAnimationFrame(() => {
+        rowEls.current.get(path)?.focus({ preventScroll: true })
+        scrollRowIntoView(path)
+      })
+    },
+    [scrollRowIntoView],
+  )
+
+  const toggleFolder = useCallback(
+    (path: string, open?: boolean) => {
+      if (searching) {
+        setSearchClosed((prev) => {
+          const next = new Set(prev)
+          const willOpen = open ?? next.has(path)
+          if (willOpen) next.delete(path)
+          else next.add(path)
+          return next
+        })
+        return
+      }
+      setExpanded((prev) => {
+        const next = new Set(prev)
+        const willOpen = open ?? !next.has(path)
+        if (willOpen) next.add(path)
+        else next.delete(path)
+        return next
+      })
+    },
+    [searching],
+  )
+
+  const showMore = useCallback((folderPath: string) => {
+    setLimits((prev) => new Map(prev).set(folderPath, (prev.get(folderPath) ?? FOLDER_PAGE_SIZE) + FOLDER_PAGE_SIZE * 5))
+  }, [])
+
+  const activate = (row: TreeRow) => {
+    if (row.kind === 'folder') toggleFolder(row.path)
+    else if (row.kind === 'file') onSelect(row.path)
+    else showMore(row.folderPath)
+  }
+
+  const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
+    if (!rows.length) return
+    const i = tabPath ? (indexByPath.get(tabPath) ?? 0) : 0
+    const row = rows[i]
+    const go = (j: number) => {
+      e.preventDefault()
+      const r = rows[Math.max(0, Math.min(rows.length - 1, j))]
+      if (r) focusRow(r.path)
+    }
+    switch (e.key) {
+      case 'ArrowDown':
+        return go(i + 1)
+      case 'ArrowUp':
+        return go(i - 1)
+      case 'Home':
+        return go(0)
+      case 'End':
+        return go(rows.length - 1)
+      case 'ArrowRight':
+        if (row.kind !== 'folder') return
+        e.preventDefault()
+        if (!row.expanded) toggleFolder(row.path, true)
+        else if (rows[i + 1]?.parentPath === row.path) focusRow(rows[i + 1].path)
+        return
+      case 'ArrowLeft':
+        e.preventDefault()
+        if (row.kind === 'folder' && row.expanded) toggleFolder(row.path, false)
+        else if (row.parentPath != null && indexByPath.has(row.parentPath)) focusRow(row.parentPath)
+        return
+      case 'Enter':
+      case ' ':
+        e.preventDefault()
+        activate(row)
+        return
+      default:
+        // Type-ahead: jump to the next row starting with the typed letter.
+        if (e.key.length === 1 && /\S/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          const ch = e.key.toLowerCase()
+          for (let k = 1; k <= rows.length; k++) {
+            const r = rows[(i + k) % rows.length]
+            if (r.kind !== 'more' && r.name.toLowerCase().startsWith(ch)) {
+              e.preventDefault()
+              focusRow(r.path)
+              return
+            }
+          }
+        }
+    }
+  }
+
+  return (
+    <div ref={scrollRef} className={cn('relative overflow-y-auto overscroll-contain', className)} data-testid="file-tree">
+      {rows.length === 0 ? (
+        <p className="px-3 py-6 text-center text-sm text-ink-2" role="status">
+          {searching ? (
+            <>
+              No files match <span className="font-medium text-ink">“{query.trim()}”</span>. Try a shorter word.
+            </>
+          ) : (
+            'This project has no files to show.'
+          )}
+        </p>
+      ) : (
+        <ul role="tree" aria-label={label} className="py-1" onKeyDown={onKeyDown}>
+          {rows.map((row) => {
+            const focusable = row.path === tabPath
+            const common = {
+              ref: (el: HTMLLIElement | null) => setRowEl(row.path, el),
+              tabIndex: focusable ? 0 : -1,
+              'aria-level': row.depth + 1,
+              'aria-setsize': row.setSize,
+              'aria-posinset': row.posInSet,
+              onFocus: () => setFocusedPath(row.path),
+              style: { paddingLeft: 6 + row.depth * INDENT_PX },
+            }
+            const base =
+              'mx-1 flex h-8 cursor-pointer items-center gap-1.5 rounded-lg pr-2 text-[13px] select-none outline-offset-[-2px] motion-safe:transition-colors'
+
+            if (row.kind === 'folder') {
+              return (
+                <li
+                  key={row.path}
+                  {...common}
+                  role="treeitem"
+                  aria-expanded={row.expanded}
+                  aria-label={`${row.name}, folder, ${formatNumber(row.folder.fileCount)} ${row.folder.fileCount === 1 ? 'file' : 'files'}`}
+                  data-path={row.path}
+                  onClick={() => {
+                    setFocusedPath(row.path)
+                    toggleFolder(row.path)
+                  }}
+                  className={cn(base, 'text-ink hover:bg-surface-2')}
+                  title={row.path}
+                >
+                  <ChevronRight
+                    className={cn('size-3.5 shrink-0 text-ink-3 motion-safe:transition-transform', row.expanded && 'rotate-90')}
+                    aria-hidden
+                  />
+                  <span className="shrink-0 text-sm leading-none" aria-hidden>
+                    {row.expanded ? '📂' : '📁'}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    <Highlighted name={row.name} terms={terms} />
+                  </span>
+                  <span className="shrink-0 text-[11px] text-ink-3 tabular-nums" aria-hidden>
+                    {formatNumber(row.folder.fileCount)}
+                  </span>
+                </li>
+              )
+            }
+
+            if (row.kind === 'more') {
+              return (
+                <li
+                  key={row.path}
+                  {...common}
+                  role="treeitem"
+                  aria-label={`Show ${formatNumber(row.hidden)} more files in this folder`}
+                  onClick={() => showMore(row.folderPath)}
+                  className={cn(base, 'font-medium text-brand-text hover:bg-surface-2')}
+                >
+                  <span className="w-3.5 shrink-0" aria-hidden />
+                  <span className="truncate">Show {formatNumber(row.hidden)} more…</span>
+                </li>
+              )
+            }
+
+            const f = row.file
+            const selected = row.path === selectedPath
+            const layer = LAYER_INFO[f.layer] ?? LAYER_INFO.other
+            const role = ROLE_INFO[f.role] ?? ROLE_INFO.other
+            const seen = isSeen?.(row.path) ?? false
+            return (
+              <li
+                key={row.path}
+                {...common}
+                role="treeitem"
+                aria-selected={selected}
+                aria-label={`${row.name}, ${f.isEntry ? ROLE_INFO.entry.label : role.label}${seen ? ', already read' : ''}`}
+                data-path={row.path}
+                onClick={() => {
+                  setFocusedPath(row.path)
+                  onSelect(row.path)
+                }}
+                className={cn(base, selected ? 'bg-brand-soft font-medium text-brand-text' : 'text-ink-2 hover:bg-surface-2 hover:text-ink')}
+                title={`${row.path} · ${f.isEntry ? ROLE_INFO.entry.label : role.label} · ${layer.label}`}
+              >
+                <span className="w-3.5 shrink-0" aria-hidden />
+                <span className="shrink-0 text-sm leading-none" aria-hidden>
+                  {fileEmoji(f)}
+                </span>
+                <span className="min-w-0 flex-1 truncate">
+                  <Highlighted name={row.name} terms={terms} />
+                </span>
+                {seen && <Check className="size-3.5 shrink-0 text-good-text" aria-hidden />}
+                <span className="size-2 shrink-0 rounded-full" style={{ background: layer.color }} aria-hidden />
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {truncatedSearch && (
+        <p className="px-3 pt-1 pb-3 text-xs text-ink-3" role="status">
+          Showing the first {formatNumber(MAX_SEARCH_ROWS)} matches. Type a little more to narrow it down.
+        </p>
+      )}
+      {searching && matches && matches.length > 0 && (
+        <p className="sr-only" role="status" aria-live="polite">
+          {matches.length === 1 ? '1 file matches.' : `${formatNumber(matches.length)} files match.`}
+        </p>
+      )}
+    </div>
+  )
 }
+

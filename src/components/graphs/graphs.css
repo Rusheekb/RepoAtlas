@@ -125,6 +125,11 @@
 }
 
 /* ── Treemap ────────────────────────────────────────────────────────────── */
+.atlas-treemap .tm-folder {
+  fill: var(--surface-2);
+  stroke: var(--line);
+  stroke-width: 1px;
+}
 .atlas-treemap .tm-item {
   cursor: pointer;
   outline: none;

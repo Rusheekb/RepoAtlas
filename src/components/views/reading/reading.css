@@ -1,0 +1,15 @@
+/* Small animations for the reading views (Read the Code, Ask, Test Yourself). Reduced motion is handled globally. */
+@keyframes atlas-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes atlas-dot {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+
+/* The question box shows focus on its whole frame (see Composer), so the textarea itself needs no second outline. */
+.atlas-composer textarea:focus-visible { outline: none; }
+
+/* Headings that receive focus only so screen readers announce them (e.g. the next quiz question) need no outline. */
+.atlas-focus-target:focus-visible { outline: none; }

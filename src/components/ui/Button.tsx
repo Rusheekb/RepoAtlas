@@ -5,6 +5,8 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'subtle' | 'dang
 export type ButtonSize = 'sm' | 'md' | 'lg'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  /** Square, icon-only (no horizontal padding). Prefer <IconButton>. */
+  square?: boolean
   variant?: ButtonVariant
   size?: ButtonSize
   icon?: ReactNode
@@ -21,13 +23,16 @@ const variants: Record<ButtonVariant, string> = {
 }
 
 const sizes: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-sm gap-1.5 rounded-lg',
-  md: 'h-10 px-4 text-sm gap-2 rounded-xl',
-  lg: 'h-12 px-6 text-base gap-2 rounded-xl',
+  sm: 'h-8 text-sm gap-1.5 rounded-lg',
+  md: 'h-10 text-sm gap-2 rounded-xl',
+  lg: 'h-12 text-base gap-2 rounded-xl',
 }
 
+/** Horizontal padding is kept separate so icon-only buttons don't fight over it. */
+const paddings: Record<ButtonSize, string> = { sm: 'px-3', md: 'px-4', lg: 'px-6' }
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = 'secondary', size = 'md', icon, iconRight, loading, className, children, disabled, type = 'button', ...rest },
+  { variant = 'secondary', size = 'md', square, icon, iconRight, loading, className, children, disabled, type = 'button', ...rest },
   ref,
 ) {
   return (
@@ -40,6 +45,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         'disabled:cursor-not-allowed disabled:opacity-55',
         variants[variant],
         sizes[size],
+        square ? (size === 'sm' ? 'w-8' : size === 'lg' ? 'w-12' : 'w-10') : paddings[size],
         className,
       )}
       {...rest}
@@ -56,6 +62,5 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonProps & { 'aria-la
   { variant = 'ghost', size = 'md', className, ...rest },
   ref,
 ) {
-  const sq = size === 'sm' ? 'size-8 px-0' : size === 'lg' ? 'size-12 px-0' : 'size-10 px-0'
-  return <Button ref={ref} variant={variant} size={size} className={cn(sq, className)} {...rest} />
+  return <Button ref={ref} variant={variant} size={size} square className={className} {...rest} />
 })

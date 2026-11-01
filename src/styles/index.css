@@ -137,8 +137,11 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
-:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
-::selection { background: color-mix(in srgb, var(--brand) 25%, transparent); }
+/* In the base layer so Tailwind utilities (outline-none, ring-*) can override it per component. */
+@layer base {
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  ::selection { background: color-mix(in srgb, var(--brand) 25%, transparent); }
+}
 
 /* Prose styling for AI / markdown explanations. */
 .prose-atlas { line-height: 1.65; font-size: 0.975rem; color: var(--ink); }

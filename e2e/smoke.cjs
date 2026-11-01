@@ -166,8 +166,8 @@ async function run() {
     const flush = watch(page, 'ai')
     await page.goto(`${BASE}#/gh/${repo}`)
     await waitForReady(page)
-    const btn = page.getByRole('button', { name: /explain this project/i }).first()
-    if (await btn.count()) {
+    const btn = page.getByRole('button', { name: /explain this project in depth/i }).first()
+    if (await btn.waitFor({ timeout: 10000 }).then(() => true, () => false)) {
       await btn.click()
       await page.getByText('mocked explanation from Claude').first().waitFor({ timeout: 10000 }).then(
         () => ok('overview AI explanation streamed'),
@@ -179,10 +179,10 @@ async function run() {
     // Concept map generation
     await page.goto(`${BASE}#/gh/${repo}/concepts`)
     await waitForReady(page)
-    const gen = page.getByRole('button', { name: /generate|claude/i }).first()
-    if (await gen.count()) {
+    const gen = page.getByRole('button', { name: /generate a smarter map with claude/i }).first()
+    if (await gen.waitFor({ timeout: 10000 }).then(() => true, () => false)) {
       await gen.click()
-      await page.getByText('Routing').first().waitFor({ timeout: 10000 }).then(
+      await page.getByText('The application').first().waitFor({ timeout: 10000 }).then(
         () => ok('AI concept map rendered'),
         () => fail('AI concept map did not render'),
       )
@@ -193,8 +193,8 @@ async function run() {
     // Tours generation
     await page.goto(`${BASE}#/gh/${repo}/tours`)
     await waitForReady(page)
-    const genT = page.getByRole('button', { name: /generate/i }).first()
-    if (await genT.count()) {
+    const genT = page.getByRole('button', { name: /generate tours with claude/i }).first()
+    if (await genT.waitFor({ timeout: 10000 }).then(() => true, () => false)) {
       await genT.click()
       await page.getByText('The journey of a request').first().waitFor({ timeout: 10000 }).then(
         () => ok('AI tours rendered'),
@@ -206,8 +206,8 @@ async function run() {
     // Quiz generation
     await page.goto(`${BASE}#/gh/${repo}/quiz`)
     await waitForReady(page)
-    const genQ = page.getByRole('button', { name: /generate|claude/i }).first()
-    if (await genQ.count()) {
+    const genQ = page.getByRole('button', { name: /generate a quiz with claude/i }).first()
+    if (await genQ.waitFor({ timeout: 10000 }).then(() => true, () => false)) {
       await genQ.click()
       await page.getByText('What does this project mainly help you build?').first().waitFor({ timeout: 10000 }).then(
         () => ok('AI quiz rendered'),
@@ -220,7 +220,7 @@ async function run() {
     await page.goto(`${BASE}#/gh/${repo}/ask`)
     await waitForReady(page)
     const box = page.locator('textarea').first()
-    if (await box.count()) {
+    if (await box.waitFor({ timeout: 10000 }).then(() => true, () => false)) {
       await box.fill('What does this project do?')
       await box.press('Enter')
       await page.getByText('mocked explanation from Claude').first().waitFor({ timeout: 10000 }).then(
