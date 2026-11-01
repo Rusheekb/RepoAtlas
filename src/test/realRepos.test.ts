@@ -3,13 +3,14 @@
  * (generate with scripts/make-fixture.mjs into e2e/.fixtures/). Skipped when no fixtures exist (e.g. CI).
  *
  *   REPORT=1 npx vitest run src/test/realRepos.test.ts
+ *   FIXTURES_DIR=/path/to/other/fixtures REPORT=1 npx vitest run src/test/realRepos.test.ts
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { analyzeRepo } from '@/analysis'
 import type { RepoSnapshot } from '@/core/types'
 
-const DIR = join(process.cwd(), 'e2e/.fixtures')
+const DIR = process.env.FIXTURES_DIR ?? join(process.cwd(), 'e2e/.fixtures')
 const fixtures = existsSync(DIR) ? readdirSync(DIR).filter((f) => f.endsWith('.json')) : []
 
 interface Fixture {

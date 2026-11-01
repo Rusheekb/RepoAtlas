@@ -5,7 +5,7 @@
  *
  *   node e2e/shot.cjs --base http://localhost:5181/ --path "#/gh/pallets/flask/map" --out /tmp/map.png
  *        [--theme light|dark] [--width 1440] [--height 900] [--full] [--key] [--wait 1500]
- *        [--click "css selector"] [--click-text "Visible text"] [--type "selector=>text"]
+ *        [--fixtures dir] [--click "css selector"] [--click-text "Visible text"] [--type "selector=>text"]
  *
  * --key      pretend the user saved a Claude API key (mocked Claude answers stream back)
  * Prints any page errors / console errors so you can fix them.
@@ -37,7 +37,7 @@ const all = (n) => args.flatMap((a, i) => (a === `--${n}` ? [args[i + 1]] : []))
       )
     })
   }
-  await installMocks(context, loadFixtures(path.join(__dirname, '.fixtures')))
+  await installMocks(context, loadFixtures(arg('fixtures', path.join(__dirname, '.fixtures'))))
   const page = await context.newPage()
   const problems = []
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`))
