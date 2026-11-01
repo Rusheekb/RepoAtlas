@@ -6,6 +6,7 @@ import { basename, dirname } from '@/core/paths'
 import { describeFolder } from '@/knowledge'
 import { count, listJoin, safeName, sentence } from './structure/text'
 import { zonesOf, type Zone } from './structure/zones'
+import { dict } from '@/core/dict'
 
 export interface BuildModulesOptions {
   /** Workspace globs / folders declared by manifests ("packages/*", "apps/web"); each package becomes its own module. */
@@ -506,7 +507,7 @@ export function buildModules(files: AnalyzedFile[], options: BuildModulesOptions
 
   // 6. Describe.
   const names = uniqueNames(mods)
-  const assignments: Record<string, string> = {}
+  const assignments: Record<string, string> = dict<string>()
   const packageCount = mods.filter((m) => m.isPackage && m.subtrees.length > 0).length
   const infos: { info: ModuleInfo; weight: number; peripheral: boolean }[] = []
 

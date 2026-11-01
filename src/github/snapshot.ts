@@ -5,6 +5,7 @@ import { fetchRepoMeta, fetchTree, resolveCommit } from './api'
 import { GitHubError, MESSAGES, throwIfAborted } from './errors'
 import { fetchManyFiles } from './files'
 import { selectFilesToFetch } from './select'
+import { dict } from '@/core/dict'
 
 export interface LoadSnapshotOptions {
   token?: string
@@ -349,7 +350,7 @@ export async function loadRepoSnapshot(ref: RepoRef, opts: LoadSnapshotOptions):
   const sizes = new Map(tree.map((e) => [e.path, e.size]))
   // Empty files need no download.
   const toDownload = selection.fetch.filter((path) => sizes.get(path) !== 0)
-  let downloaded: Record<string, string> = {}
+  let downloaded: Record<string, string> = dict<string>()
 
   // 5. Download.
   const skipped: { path: string; reason: SkipReason }[] = [...selection.skipped]
@@ -373,7 +374,7 @@ export async function loadRepoSnapshot(ref: RepoRef, opts: LoadSnapshotOptions):
   }
 
   // Keep `files` in priority order (README first …), like the selection.
-  const files: Record<string, string> = {}
+  const files: Record<string, string> = dict<string>()
   for (const path of selection.fetch) {
     if (sizes.get(path) === 0) files[path] = ''
     else if (Object.hasOwn(downloaded, path)) files[path] = downloaded[path]

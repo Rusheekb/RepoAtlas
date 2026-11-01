@@ -12,6 +12,7 @@ import {
   parseJsonc,
   type RepoIndex,
 } from './repo'
+import { dict } from '@/core/dict'
 
 /** Extension preference when an import omits it. Lower = preferred. */
 const EXT_RANK: Record<string, number> = {
@@ -295,7 +296,7 @@ export class JsResolver {
     const dir = dirname(path)
     if (typeof co.baseUrl === 'string') merged.baseUrl = joinPath(dir, co.baseUrl)
     if (isObject(co.paths)) {
-      const paths: Record<string, string[]> = {}
+      const paths: Record<string, string[]> = dict<string[]>()
       for (const [k, v] of Object.entries(co.paths)) {
         if (Array.isArray(v)) paths[k] = v.filter((x): x is string => typeof x === 'string')
       }

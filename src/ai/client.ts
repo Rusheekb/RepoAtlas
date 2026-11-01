@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
+import Anthropic, { type ClientOptions } from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import type {
   BetaMessage,
@@ -40,10 +40,23 @@ export function supportsRefusalFallbacks(model: ModelId): boolean {
 
 let cached: { key: string; client: Anthropic } | null = null
 
-/** One SDK client per API key (the user's own key, used straight from the browser). */
+/** The only host the user's key is ever sent to. */
+export const ANTHROPIC_BASE_URL = 'https://api.anthropic.com'
+
+/**
+ * One SDK client per API key (the user's own key, used straight from the browser).
+ * The options object has no prototype and pins `baseURL`, so nothing inherited (e.g. via prototype pollution
+ * from untrusted repository data) can redirect requests carrying the key to another host.
+ */
 function getClient(apiKey: string): Anthropic {
   if (cached?.key === apiKey) return cached.client
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
+  const options = Object.assign(Object.create(null) as ClientOptions, {
+    apiKey,
+    authToken: null,
+    baseURL: ANTHROPIC_BASE_URL,
+    dangerouslyAllowBrowser: true,
+  } satisfies ClientOptions)
+  const client = new Anthropic(options)
   cached = { key: apiKey, client }
   return client
 }

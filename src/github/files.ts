@@ -1,6 +1,7 @@
 import type { SkipReason } from '@/core/types'
 import { apiFetch, encodePath, repoApiPath } from './api'
 import { GitHubError, MESSAGES, describeError, isAbortError, rateLimitMessage, sleep, throwIfAborted } from './errors'
+import { dict } from '@/core/dict'
 
 export interface FetchFileParams {
   owner: string
@@ -245,9 +246,9 @@ export async function fetchManyFiles(
   const crashed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
   if (crashed) throw crashed.reason
 
-  const files: Record<string, string> = {}
+  const files: Record<string, string> = dict<string>()
   const failed: string[] = []
-  const failedReasons: Record<string, SkipReason> = {}
+  const failedReasons: Record<string, SkipReason> = dict<SkipReason>()
   for (const path of unique) {
     const text = ok.get(path)
     if (text != null) files[path] = text

@@ -123,7 +123,9 @@ describe('streamText request params', () => {
     const ctrl = new AbortController()
     const r = req(model, 'high')
     await streamText(r, { signal: ctrl.signal })
-    expect(mocks.ctor).toHaveBeenCalledWith({ apiKey: r.apiKey, dangerouslyAllowBrowser: true })
+    expect(mocks.ctor).toHaveBeenCalledWith(expect.objectContaining({ apiKey: r.apiKey, baseURL: 'https://api.anthropic.com', dangerouslyAllowBrowser: true }))
+    // Prototype-less options: inherited (polluted) properties can never redirect the key.
+    expect(Object.getPrototypeOf(mocks.ctor.mock.calls.at(-1)?.[0])).toBeNull()
     const [params, options] = mocks.stream.mock.calls[0]
     expect(params).toEqual({
       model,

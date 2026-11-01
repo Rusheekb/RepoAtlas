@@ -1,5 +1,6 @@
 import { basename, dirname, extname, joinPath } from '@/core/paths'
 import type { DependencyRef, Ecosystem, ManifestInfo } from '../types'
+import { dict } from '@/core/dict'
 
 /** Everything a single manifest parser needs. */
 export interface ParseContext {
@@ -21,7 +22,7 @@ export class ManifestCollector {
   readonly scripts: { name: string; command: string; source: string }[] = []
   readonly entryHints: { path: string; reason: string }[] = []
   readonly workspaces: string[] = []
-  readonly psr4: Record<string, string> = {}
+  readonly psr4: Record<string, string> = dict<string>()
   readonly projectNames: string[] = []
   readonly descriptions: string[] = []
   goModulePath: string | undefined

@@ -34,6 +34,7 @@ import { buildStarterConcepts, buildStarterTours } from './starter'
 import { ecosystemOf, familyOf } from './structure/family'
 import { zonesOf } from './structure/zones'
 import { clearSignalCache } from './structure/signals'
+import { dict } from '@/core/dict'
 
 /** Let the browser paint (progress messages, spinners) between heavy phases. */
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
@@ -195,7 +196,7 @@ export async function analyzeRepo(snapshot: RepoSnapshot): Promise<RepoAnalysis>
 }
 
 async function analyze(snapshot: RepoSnapshot): Promise<RepoAnalysis> {
-  const contents: Record<string, string> = {}
+  const contents: Record<string, string> = dict<string>()
   for (const [p, text] of Object.entries(snapshot.files ?? {})) if (typeof text === 'string') contents[p] = text
 
   // Every path once, in tree order; downloaded files missing from the tree are added too.
@@ -253,7 +254,7 @@ async function analyze(snapshot: RepoSnapshot): Promise<RepoAnalysis> {
   await tick()
 
   // 5. Classify every file and build its record.
-  const files: Record<string, AnalyzedFile> = {}
+  const files: Record<string, AnalyzedFile> = dict<AnalyzedFile>()
   for (const e of entries) {
     const p = e.path
     const content = contents[p]

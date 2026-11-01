@@ -137,29 +137,44 @@ export function parseSetupPy(ctx: ParseContext): void {
   }
 }
 
-/** Minimal INI reader: section → key → value (multi-line values joined with "\n"). */
+/** Names that must never be used as plain-object keys (prototype pollution). */
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
+/**
+ * Minimal INI reader: section → key → value (multi-line values joined with "\n").
+ * Uses prototype-less objects and skips `__proto__`/`constructor`/`prototype` names, because section and key
+ * names come from untrusted repository files.
+ */
 export function parseIni(text: string): Record<string, Record<string, string>> {
-  const out: Record<string, Record<string, string>> = {}
+  const out: Record<string, Record<string, string>> = Object.create(null)
   let section = ''
   let key: string | null = null
+  let skipSection = false
+  const sectionObj = (name: string): Record<string, string> => (out[name] ??= Object.create(null) as Record<string, string>)
   for (const raw of linesOf(text)) {
     if (/^\s*[#;]/.test(raw)) continue
     const sec = /^\s*\[([^\]]+)\]\s*$/.exec(raw)
     if (sec) {
       section = sec[1].trim()
-      out[section] ??= {}
+      skipSection = UNSAFE_KEYS.has(section)
+      if (!skipSection) sectionObj(section)
       key = null
       continue
     }
+    if (skipSection) continue
     if (/^\s+\S/.test(raw) && key !== null) {
-      out[section][key] += `\n${raw.trim()}`
+      sectionObj(section)[key] += `\n${raw.trim()}`
       continue
     }
     const kv = /^([^=:\s][^=:]*)[=:](.*)$/.exec(raw)
     if (kv) {
-      out[section] ??= {}
-      key = kv[1].trim()
-      out[section][key] = kv[2].trim()
+      const k = kv[1].trim()
+      if (UNSAFE_KEYS.has(k)) {
+        key = null
+        continue
+      }
+      key = k
+      sectionObj(section)[key] = kv[2].trim()
     } else if (!raw.trim()) {
       key = null
     }
