@@ -75,6 +75,4 @@ src/
 
 ### Deployment
 
-Every push to `main` runs the tests and publishes the site to GitHub Pages via `.github/workflows/deploy.yml`.
-One-time setup: in the repository's **Settings → Pages**, set **Source** to **GitHub Actions**.
-
+Every push to `main` runs the type checks and tests, builds the site, and publishes `dist/` to the `gh-pages` branch (`.github/workflows/deploy.yml`), which GitHub Pages serves.
