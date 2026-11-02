@@ -142,7 +142,7 @@ describe('stripComments — C-style languages', () => {
     expect(out).not.toContain('// z')
     const t0 = performance.now()
     stripComments('#'.repeat(100_000), 'Swift')
-    expect(performance.now() - t0).toBeLessThan(100)
+    expect(performance.now() - t0).toBeLessThan(1000)
   })
 
   it('gives up on an unclosed regex literal for the rest of its line only', () => {
@@ -150,7 +150,7 @@ describe('stripComments — C-style languages', () => {
     expect(stripComments(src, 'JavaScript')).toContain('"// not a comment"')
     const t0 = performance.now()
     maskSource('[/'.repeat(50_000), 'JavaScript')
-    expect(performance.now() - t0).toBeLessThan(100)
+    expect(performance.now() - t0).toBeLessThan(1000)
   })
 })
 

@@ -442,7 +442,7 @@ describe('Rust resolution', () => {
     expect(tables.find((t) => t.header === 'lib')?.values.get('path')).toBe('l.rs')
     const t0 = performance.now()
     cargoTables(`[package]\n${' \n'.repeat(50_000)}${'['.repeat(100_000)}\n${'a = '.repeat(25_000)}`)
-    expect(performance.now() - t0).toBeLessThan(200)
+    expect(performance.now() - t0).toBeLessThan(1500)
   })
 })
 

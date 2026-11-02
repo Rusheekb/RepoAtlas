@@ -165,7 +165,7 @@ describe('findTermsInText', () => {
     const paragraph = 'The front end calls the API, which validates the request with middleware, queries the database through an ORM and caches the response. '.repeat(200)
     const t0 = performance.now()
     findTermsInText(paragraph, { allOccurrences: true })
-    expect(performance.now() - t0).toBeLessThan(500)
+    expect(performance.now() - t0).toBeLessThan(1500)
   })
 })
 

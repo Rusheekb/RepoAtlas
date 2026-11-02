@@ -330,12 +330,13 @@ describe('structured hooks', () => {
     )
     const { result } = renderHook(() => useTours())
     await waitFor(() => expect(result.current.state).toBe('idle'))
+    // Claude jobs run in a background job store (so navigating away doesn't cancel them): wait for the result.
     await act(async () => result.current.run())
-    expect(result.current.data?.map((t) => t.id)).toEqual(['startup', 'saving'])
+    await waitFor(() => expect(result.current.data?.map((t) => t.id)).toEqual(['startup', 'saving']))
 
     await act(async () => result.current.askTour('How does it start?'))
-    expect(result.current.asking).toBe(false)
-    expect(result.current.data?.map((t) => t.id)).toEqual(['startup', 'saving', 'startup-2'])
+    await waitFor(() => expect(result.current.data?.map((t) => t.id)).toEqual(['startup', 'saving', 'startup-2']))
+    await waitFor(() => expect(result.current.asking).toBe(false))
     expect(tasks.generateTours.mock.calls[1][1]).toMatchObject({ question: 'How does it start?' })
     expect((tasks.generateTours.mock.calls[1][1] as { takenIds: Set<string> }).takenIds).toEqual(new Set(['startup', 'saving']))
     expect(await getCachedAi(customToursKey)).toMatchObject({ data: [expect.objectContaining({ id: 'startup-2' })] })
@@ -351,12 +352,14 @@ describe('structured hooks', () => {
     const { result } = renderHook(() => useTours())
     await waitFor(() => expect(result.current.state).toBe('idle'))
     await act(async () => result.current.run())
+    await waitFor(() => expect(result.current.data?.map((t) => t.id)).toEqual(['startup']))
     await act(async () => result.current.askTour('How does login work?'))
-    expect(result.current.data?.map((t) => t.id)).toEqual(['startup', 'login'])
+    await waitFor(() => expect(result.current.data?.map((t) => t.id)).toEqual(['startup', 'login']))
+    await waitFor(() => expect(result.current.asking).toBe(false))
 
     await act(async () => result.current.run())
     // The new generated set comes first; the reader's own tour stays, with its id (links to it keep working).
-    expect(result.current.data?.map((t) => t.id)).toEqual(['login-2', 'saving', 'login'])
+    await waitFor(() => expect(result.current.data?.map((t) => t.id)).toEqual(['login-2', 'saving', 'login']))
     expect(result.current.data?.at(-1)?.title).toBe('How does login work?')
     expect(await getCachedAi(toursKey)).toMatchObject({ data: [expect.objectContaining({ id: 'login-2' }), expect.objectContaining({ id: 'saving' })] })
   })

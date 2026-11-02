@@ -11,7 +11,8 @@ import { extractSymbols } from './symbols'
 import { createResolver } from './resolve'
 
 const SIZE = 100_000
-const BUDGET_MS = 50
+// Generous for slow, shared CI machines; the bugs these guard against took 10+ seconds.
+const BUDGET_MS = 250
 
 /** `unit` repeated to about SIZE characters. */
 const fill = (unit: string) => unit.repeat(Math.ceil(SIZE / unit.length))

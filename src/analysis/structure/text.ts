@@ -122,12 +122,13 @@ export function plainText(md: string): string {
       // reStructuredText links: `Werkzeug <https://…>`_ → Werkzeug (before tags, whose brackets look alike).
       .replace(/`([^`<\n]{1,200}?)[ \t]*<[^>\n]{0,500}>`_{1,2}/g, '$1')
       .replace(/<[^<>]{0,2000}>/g, ' ')
-      .replace(/!\[[^\]\n]{0,500}\]\([^)\n]{0,2000}\)/g, ' ')
-      .replace(/\[([^\]\n]{0,500})\]\([^)\n]{0,2000}\)/g, '$1')
-      .replace(/\[([^\]\n]{0,500})\]\[[^\]\n]{0,200}\]/g, '$1')
-      .replace(/^[ \t]*\[[^\]\n]{1,500}\]:[ \t]*\S+.*$/gm, ' ')
+      // Link text never contains "[" itself, which also keeps these linear on a run of brackets.
+      .replace(/!\[[^[\]\n]{0,500}\]\([^)\n]{0,2000}\)/g, ' ')
+      .replace(/\[([^[\]\n]{0,500})\]\([^)\n]{0,2000}\)/g, '$1')
+      .replace(/\[([^[\]\n]{0,500})\]\[[^[\]\n]{0,200}\]/g, '$1')
+      .replace(/^[ \t]*\[[^[\]\n]{1,500}\]:[ \t]*\S+.*$/gm, ' ')
       // Shortcut reference links ("a lightweight [WSGI] web application framework") keep just their text.
-      .replace(/\[([^\]\n]{1,200})\](?![(:])/g, '$1')
+      .replace(/\[([^[\]\n]{1,200})\](?![(:])/g, '$1')
       .replace(/:[a-z]{1,30}:`([^`\n]{1,200})`/g, '$1')
       .replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, '')
       .replace(/^[ \t]*>[ \t]?/gm, '')
