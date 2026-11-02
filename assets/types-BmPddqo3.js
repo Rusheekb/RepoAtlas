@@ -1,0 +1,1 @@
+var e=class extends Error{kind;detail;constructor(e,t,n){super(t),this.name=`AiError`,this.kind=e,this.detail=n}};export{e as t};

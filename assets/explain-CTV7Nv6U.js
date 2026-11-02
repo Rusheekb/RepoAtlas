@@ -1,0 +1,1 @@
+import{t as e}from"./react-DrE1smQy.js";var t=e()((e,t)=>({target:null,history:[],open:n=>{let r=t().target;e({target:n,history:r?[...t().history,r].slice(-20):[]})},back:()=>{let n=t().history;if(!n.length)return e({target:null});e({target:n[n.length-1],history:n.slice(0,-1)})},close:()=>e({target:null,history:[]})}));export{t};

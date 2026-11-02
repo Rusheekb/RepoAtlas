@@ -1,0 +1,1 @@
+@keyframes atlas-pop{0%{opacity:0;transform:translateY(6px)scale(.98)}to{opacity:1;transform:none}}@keyframes atlas-dot{0%,80%,to{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-2px)}}@media not (forced-colors:active){.atlas-composer textarea:focus-visible{outline:none}}.atlas-focus-target:focus-visible{outline:none}

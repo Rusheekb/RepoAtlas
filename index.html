@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-iGTtrIKCsWoiSsHrxomPl5W87EW7UuG87u0GyauYZSU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.github.com https://raw.githubusercontent.com https://api.anthropic.com; object-src 'none'; base-uri 'self'; form-action 'none'" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="RepoAtlas turns any GitHub repository into visual maps and plain-English explanations, so anyone can understand how the code works." />
+    <meta name="theme-color" content="#f7f5f0" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>RepoAtlas — understand any codebase</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a flash.
+      (function () {
+        try {
+          var raw = localStorage.getItem('repoatlas:settings');
+          var pref = raw ? (JSON.parse(raw).state || {}).theme : 'system';
+          var dark = pref === 'dark' || ((!pref || pref === 'system') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        } catch (e) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-CqKD2nWK.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/react-DrE1smQy.js">
+    <link rel="modulepreload" crossorigin href="./assets/labels-B02hOkln.js">
+    <link rel="modulepreload" crossorigin href="./assets/Spinner-C1H5Prna.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-Dp-fN6OQ.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>RepoAtlas needs JavaScript to run.</noscript>
+  </body>
+</html>
