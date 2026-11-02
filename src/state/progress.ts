@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { safeLocalStorage } from './safeStorage'
 import { useSettings } from './settings'
 
 export interface RecentRepo {
@@ -30,6 +31,29 @@ export interface ProgressState {
    * before the private flag existed.
    */
   forgetPrivateRepos: (alsoNames?: readonly string[]) => void
+}
+
+/** How much progress is kept on this device (it lives in the browser's small localStorage). */
+const MAX_REPOS = 20
+const MAX_ITEMS_PER_REPO = 3000
+
+/** Keep the most recently explored repositories (and their newest items) so saved progress stays small. */
+export function trimSeen(seen: ProgressState['seen'], maxRepos = MAX_REPOS, maxItems = MAX_ITEMS_PER_REPO): ProgressState['seen'] {
+  const latest = (items: Record<string, number>) => Object.values(items).reduce((m, t) => (t > m ? t : m), 0)
+  const repos = Object.entries(seen).sort((a, b) => latest(b[1]) - latest(a[1])).slice(0, maxRepos)
+  const out: ProgressState['seen'] = {}
+  for (const [repo, items] of repos) {
+    const entries = Object.entries(items)
+    out[repo] = entries.length <= maxItems ? items : Object.fromEntries(entries.sort((a, b) => b[1] - a[1]).slice(0, maxItems))
+  }
+  return out
+}
+
+/** Last resort when the browser says storage is full: keep the Recent list and progress for the 3 newest projects. */
+function shrinkSaved(value: string): string | null {
+  const parsed = JSON.parse(value) as { state?: Partial<ProgressState>; version?: number }
+  if (!parsed.state) return null
+  return JSON.stringify({ ...parsed, state: { ...parsed.state, seen: trimSeen(parsed.state.seen ?? {}, 3, 500) } })
 }
 
 /** Item keys look like "module:src/components", "file:src/a.ts", "concept:checkout", "tour:startup", "step:readme". */
@@ -75,15 +99,17 @@ export const useProgress = create<ProgressState>()(
     {
       name: 'repoatlas:progress',
       version: 1,
-      storage: createJSONStorage(() => localStorage),
+      // Never throws: a full or blocked browser storage just means progress lasts for this visit only.
+      storage: createJSONStorage(() => safeLocalStorage(shrinkSaved)),
       // Private projects stay in this tab's memory only, unless the reader asked RepoAtlas to remember their keys.
       partialize: (s) => {
-        if (useSettings.getState().rememberKeys) return s
+        const saved = { ...s, seen: trimSeen(s.seen) }
+        if (useSettings.getState().rememberKeys) return saved
         const hidden = new Set(s.recent.filter((r) => r.isPrivate).map((r) => r.fullName.toLowerCase()))
-        if (!hidden.size) return s
-        const seen = { ...s.seen }
+        if (!hidden.size) return saved
+        const seen = { ...saved.seen }
         for (const n of hidden) delete seen[n]
-        return { ...s, recent: s.recent.filter((r) => !r.isPrivate), seen }
+        return { ...saved, recent: s.recent.filter((r) => !r.isPrivate), seen }
       },
     },
   ),

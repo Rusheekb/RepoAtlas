@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { safeLocalStorage } from './safeStorage'
 import { DEFAULT_MODEL } from '@/core/labels'
 import type { AnalysisDepth, ContextSize, ModelId, ReadingLevel, ThemePref } from '@/core/types'
 
@@ -68,7 +69,8 @@ export const useSettings = create<SettingsState>()(
     {
       name: 'repoatlas:settings',
       version: 1,
-      storage: createJSONStorage(() => localStorage),
+      // Never throws: if the browser can't save, settings simply last for this visit.
+      storage: createJSONStorage(() => safeLocalStorage()),
       partialize: (s) => {
         const { set: _set, ...rest } = s
         if (!s.rememberKeys) return { ...rest, anthropicApiKey: '', githubToken: '' }

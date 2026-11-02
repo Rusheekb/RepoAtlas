@@ -3,6 +3,7 @@ import { createHashRouter, Navigate, RouterProvider } from 'react-router'
 import HomePage from '@/pages/HomePage'
 import { applyTheme, useSettings } from '@/state/settings'
 import { Spinner } from '@/components/ui/Spinner'
+import { allowUpdateReloadSoon, RouteError } from '@/components/shell/RouteError'
 
 const RepoLayout = lazy(() => import('@/pages/RepoLayout'))
 const OverviewPage = lazy(() => import('@/pages/OverviewPage'))
@@ -26,10 +27,11 @@ function PageFallback() {
 const page = (el: React.ReactNode) => <Suspense fallback={<PageFallback />}>{el}</Suspense>
 
 const router = createHashRouter([
-  { path: '/', element: <HomePage /> },
+  { path: '/', element: <HomePage />, errorElement: <RouteError /> },
   {
     path: '/gh/:owner/:repo',
     element: page(<RepoLayout />),
+    errorElement: <RouteError />,
     children: [
       { index: true, element: page(<OverviewPage />) },
       { path: 'map', element: page(<ArchitecturePage />) },
@@ -48,6 +50,7 @@ const router = createHashRouter([
 
 export default function App() {
   const theme = useSettings((s) => s.theme)
+  useEffect(() => allowUpdateReloadSoon(), [])
   useEffect(() => {
     applyTheme(theme)
     if (theme !== 'system') return

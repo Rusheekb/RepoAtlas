@@ -10,6 +10,7 @@ import type { AnalysisDepth, ContextSize, ModelId, ReadingLevel, ThemePref } fro
 import { getRateLimitInfo, onRateLimitChange, type RateLimitInfo } from '@/github/api'
 import { formatResetTime } from '@/github/errors'
 import { useProgress } from '@/state/progress'
+import { isStorageBlocked } from '@/state/safeStorage'
 import { useSettings } from '@/state/settings'
 import { useUi, type SettingsSection } from '@/state/ui'
 
@@ -497,6 +498,14 @@ function DataSection() {
           ))}
         </ul>
       </SectionIntro>
+
+      {isStorageBlocked() && (
+        <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm text-ink-2" role="note">
+          <span className="font-medium text-ink">This browser isn’t letting RepoAtlas save anything right now</span> — its storage
+          for this web address is full or switched off. Everything still works, but your settings and progress will reset when you
+          close the tab. Clearing this site’s data in your browser settings usually fixes it.
+        </p>
+      )}
 
       <div className="rounded-2xl border border-line p-4">
         <div className="flex items-start justify-between gap-4">
