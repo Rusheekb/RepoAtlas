@@ -32,11 +32,14 @@ export function lowerFirst(s: string): string {
   return s[0].toLowerCase() + s.slice(1)
 }
 
-/** Ensure a sentence ends with terminal punctuation. */
+/**
+ * Ensure a sentence ends with terminal punctuation. A closing bracket only ends it when the bracket itself closes a
+ * sentence ("(See the tests.)"); "Runs when you type “flask” in a terminal (pyproject.toml)" still gets its full stop.
+ */
 export function sentence(s: string): string {
   const t = s.trim()
   if (!t) return t
-  return /[.!?…:)"”’]$/.test(t) ? t : `${t}.`
+  return /(?:[.!?…:"”’]|[.!?…]\))$/.test(t) ? t : `${t}.`
 }
 
 /** The first sentence of a paragraph (best effort). */

@@ -1,7 +1,9 @@
 import { useCallback, useMemo } from 'react'
+import { File } from 'lucide-react'
 import type { EdgeTypes, NodeTypes } from '@xyflow/react'
 import { EmptyState, LayerLegend } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import { formatBytes, formatNumber, pluralize } from '@/core/format'
 import { LAYER_INFO, ROLE_INFO } from '@/core/labels'
 import { basename, dirname, extname } from '@/core/paths'
@@ -91,7 +93,7 @@ function placeholderFile(path: string): AnalyzedFile {
   }
 }
 
-/** File-level dependency graph inside a module: nodes show role emoji, file name, role label; layered layout. Caps at ~120 nodes (shows a note). */
+/** File-level dependency graph inside a module: nodes show a layer dot, file name and role label; layered layout. Caps at ~120 nodes (shows a note). */
 export function FileGraph({
   files,
   edges,
@@ -181,7 +183,7 @@ export function FileGraph({
   if (!files.length) {
     return (
       <div className={cn('flex h-full w-full items-center justify-center', className)} data-testid="file-graph">
-        <EmptyState icon="📄" title="No files to show">
+        <EmptyState icon={<Icon as={File} size={20} />} title="No files to show">
           This part of the project doesn’t contain any files we could map.
         </EmptyState>
       </div>
@@ -190,9 +192,9 @@ export function FileGraph({
 
   const { sel } = graph
   const notes: string[] = []
-  if (sel.hiddenMain > 0) notes.push(`Showing the ${formatNumber(sel.main.length)} most connected files (of ${formatNumber(files.length)}).`)
-  if (sel.hiddenNeighbors > 0) notes.push(`${pluralize(sel.hiddenNeighbors, 'outside file')} left out to keep the picture readable.`)
-  if (!graph.edges.length) notes.push('None of these files use each other directly.')
+  if (sel.hiddenMain > 0) notes.push(`Showing the ${formatNumber(sel.main.length)} most connected files of ${formatNumber(files.length)}`)
+  if (sel.hiddenNeighbors > 0) notes.push(`${pluralize(sel.hiddenNeighbors, 'outside file')} left out to keep the picture readable`)
+  if (!graph.edges.length) notes.push('None of these files use each other directly')
 
   return (
     <FlowCanvas
@@ -215,15 +217,16 @@ export function FileGraph({
       showMiniMap={graph.nodes.length > 30}
       miniMapColor={(n) => LAYER_INFO[n.data.file.layer]?.color ?? 'var(--layer-other)'}
       footer={
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
           {graph.layers.length >= 2 ? <LayerLegend layers={graph.layers} /> : <span />}
           <div className="space-y-0.5 text-xs">
             <p className="text-ink-3">
-              Arrows point from a file to the file it uses.
-              {sel.neighbors.length > 0 && ' Faded cards with dashed borders live in other parts of the project.'}
+              {sel.neighbors.length > 0
+                ? 'Arrows point from a file to the file it uses. Faded cards with dashed borders live in other parts of the project.'
+                : 'Arrows point from a file to the file it uses'}
             </p>
             {notes.map((n) => (
-              <p key={n} className="font-medium text-ink-2">
+              <p key={n} className="text-ink-2">
                 {n}
               </p>
             ))}

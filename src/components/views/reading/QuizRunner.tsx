@@ -3,6 +3,7 @@ import { ArrowRight, Check, RotateCcw, Shuffle, X } from 'lucide-react'
 import { RichText } from '@/components/shell/bits'
 import { Button, Markdown } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import type { QuizQuestion } from '@/core/types'
 
 export interface QuizRunnerProps {
@@ -19,12 +20,19 @@ export interface QuizRunnerProps {
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']
 
+/** Keyboard keys in the small print, drawn as keycaps. */
+const KEYCAP = 'inline-flex h-5 min-w-5 items-center justify-center rounded-sm border border-line-strong bg-surface px-1 font-mono text-xs text-ink-2'
+
+/**
+ * A calm line for the score screen. `emoji` is kept for compatibility but is no longer shown: the score itself is the
+ * figure on that screen.
+ */
 export function scoreMessage(score: number, total: number): { emoji: string; title: string; text: string } {
   const p = total ? score / total : 0
-  if (p >= 0.99) return { emoji: '🏆', title: 'A perfect score!', text: 'You really know your way around this project. Impressive work.' }
-  if (p >= 0.7) return { emoji: '🎉', title: 'Great job!', text: 'You’ve got a solid picture of how this project fits together.' }
-  if (p >= 0.4) return { emoji: '👍', title: 'Nice going!', text: 'You’re getting there. Have a look at the explanations below, then try again.' }
-  return { emoji: '🌱', title: 'A good start', text: 'Everyone starts somewhere. The explanations below are a great way to learn. Then give it another go.' }
+  if (p >= 0.99) return { emoji: '🏆', title: 'Full marks', text: 'You know your way around this project.' }
+  if (p >= 0.7) return { emoji: '🎉', title: 'A solid picture', text: 'You’ve got a clear sense of how this project fits together.' }
+  if (p >= 0.4) return { emoji: '👍', title: 'Getting there', text: 'Have a look at the explanations below, then try again.' }
+  return { emoji: '🌱', title: 'A good start', text: 'Everyone starts somewhere. The explanations below are a good way to learn, then give it another go.' }
 }
 
 function isTyping(target: EventTarget | null): boolean {
@@ -101,44 +109,45 @@ export function QuizRunner({ questions, onNewQuiz, newQuizLabel, onFinish, after
     return (
       <div className={cn('space-y-5', className)} data-testid="quiz-score">
         <section className="rounded-2xl border border-line bg-surface p-6 text-center shadow-sm sm:p-8" aria-labelledby="quiz-score-title">
-          <div className="text-5xl leading-none" aria-hidden>
-            {msg.emoji}
-          </div>
-          <h2 id="quiz-score-title" ref={headingRef} tabIndex={-1} className="atlas-focus-target mt-3 text-2xl font-semibold tracking-tight text-ink outline-none">
+          {/* The score is the figure on this screen: big, tabular, in ink. */}
+          <p className="flex items-baseline justify-center gap-1 leading-none font-medium text-ink tabular-nums" aria-hidden>
+            <span className="text-6xl tracking-tight">{score}</span>
+            <span className="text-2xl text-ink-3">/ {total}</span>
+          </p>
+          <h2 id="quiz-score-title" ref={headingRef} tabIndex={-1} className="atlas-focus-target mt-4 text-xl font-medium text-ink outline-none">
             {msg.title}
           </h2>
-          <p className="mt-2 text-lg text-ink">
-            You got <strong className="font-semibold text-brand-text">{score}</strong> out of <strong className="font-semibold">{total}</strong> right.
+          <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-ink-2">
+            You got <span className="tabular-nums">{score}</span> out of <span className="tabular-nums">{total}</span> right. {msg.text}
           </p>
-          <p className="mx-auto mt-1 max-w-md text-sm text-ink-2">{msg.text}</p>
-          <div className="mt-5 flex flex-wrap justify-center gap-2">
-            <Button variant="primary" icon={<RotateCcw className="size-4" aria-hidden />} onClick={restart}>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <Button variant="primary" icon={<Icon as={RotateCcw} />} onClick={restart}>
               Try again
             </Button>
-            <Button variant="secondary" icon={<Shuffle className="size-4" aria-hidden />} onClick={onNewQuiz}>
+            <Button variant="secondary" icon={<Icon as={Shuffle} />} onClick={onNewQuiz}>
               {newQuizLabel}
             </Button>
           </div>
-          {afterScore && <div className="mt-5 border-t border-line pt-4 text-sm text-ink-2">{afterScore}</div>}
+          {afterScore && <div className="mt-6 border-t border-line pt-4 text-sm text-ink-2">{afterScore}</div>}
         </section>
 
         <section aria-labelledby="quiz-review-title">
-          <h3 id="quiz-review-title" className="text-sm font-semibold text-ink">
+          <h3 id="quiz-review-title" className="text-sm font-medium text-ink">
             Your answers
           </h3>
-          <ol className="mt-2 space-y-2">
+          <ol className="mt-3 space-y-2">
             {questions.map((item, i) => {
               const right = answers[i] === item.answerIndex
               return (
-                <li key={i} className="flex gap-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-sm">
+                <li key={i} className="flex gap-3 rounded-xl border border-line bg-surface px-4 py-3">
                   <span
                     className={cn(
-                      'mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full',
-                      right ? 'bg-brand-soft text-good-text' : 'bg-surface-2 text-bad-text',
+                      'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full',
+                      right ? 'bg-brand text-brand-ink' : 'border border-line-strong bg-surface-2 text-bad-text',
                     )}
                   >
-                    {right ? <Check className="size-3.5" aria-hidden /> : <X className="size-3.5" aria-hidden />}
-                    <span className="sr-only">{right ? 'Correct' : 'Not quite'}</span>
+                    <Icon as={right ? Check : X} size={14} />
+                    <span className="sr-only">{right ? 'Correct' : 'Not correct'}</span>
                   </span>
                   <div className="min-w-0 text-sm">
                     <p className="font-medium text-ink">
@@ -166,10 +175,10 @@ export function QuizRunner({ questions, onNewQuiz, newQuizLabel, onFinish, after
   return (
     <div className={cn('space-y-4', className)} data-testid="quiz-runner">
       <div className="flex items-center gap-3">
-        <p className="text-sm font-medium text-ink-2 tabular-nums">
+        <p className="text-sm text-ink-2 tabular-nums">
           Question {index + 1} of {total}
         </p>
-        <ol className="ml-auto flex items-center gap-1.5" aria-label="Your progress">
+        <ol className="ml-auto flex items-center gap-2" aria-label="Your progress">
           {questions.map((item, i) => {
             const a = answers[i]
             const state = a == null ? (i === index ? 'current' : 'todo') : a === item.answerIndex ? 'right' : 'wrong'
@@ -177,18 +186,19 @@ export function QuizRunner({ questions, onNewQuiz, newQuizLabel, onFinish, after
               <li
                 key={i}
                 className={cn(
-                  'flex size-5 items-center justify-center rounded-full border text-[10px]',
-                  state === 'current' && 'border-brand bg-brand-soft',
-                  state === 'todo' && 'border-line bg-surface',
+                  'flex size-5 items-center justify-center rounded-full border transition-colors duration-150 ease-atlas',
+                  // The question you're on is the one marked in the accent.
+                  state === 'current' && 'border-accent bg-accent-soft',
+                  state === 'todo' && 'border-line-strong bg-surface',
                   state === 'right' && 'border-transparent bg-brand text-brand-ink',
                   state === 'wrong' && 'border-line-strong bg-surface-2 text-bad-text',
                 )}
                 title={`Question ${i + 1}`}
               >
-                {state === 'right' && <Check className="size-3" aria-hidden />}
-                {state === 'wrong' && <X className="size-3" aria-hidden />}
+                {state === 'right' && <Icon as={Check} size={14} />}
+                {state === 'wrong' && <Icon as={X} size={14} />}
                 <span className="sr-only">
-                  Question {i + 1}: {state === 'right' ? 'correct' : state === 'wrong' ? 'not quite' : state === 'current' ? 'current' : 'not answered yet'}
+                  Question {i + 1}: {state === 'right' ? 'correct' : state === 'wrong' ? 'not correct' : state === 'current' ? 'current' : 'not answered yet'}
                 </span>
               </li>
             )
@@ -196,12 +206,12 @@ export function QuizRunner({ questions, onNewQuiz, newQuizLabel, onFinish, after
         </ol>
       </div>
 
-      <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm sm:p-7" aria-labelledby="quiz-question">
-        <h2 id="quiz-question" ref={headingRef} tabIndex={-1} className="atlas-focus-target text-xl leading-snug font-semibold tracking-tight text-ink outline-none sm:text-2xl">
+      <section className="rounded-2xl border border-line bg-surface p-5 shadow-sm sm:p-8" aria-labelledby="quiz-question">
+        <h2 id="quiz-question" ref={headingRef} tabIndex={-1} className="atlas-focus-target text-xl leading-snug font-medium text-ink outline-none sm:text-2xl">
           <RichText text={q.question} />
         </h2>
 
-        <ul className="mt-5 grid gap-2.5" aria-label="Answers">
+        <ul className="mt-6 grid gap-2" aria-label="Answers">
           {q.options.map((opt, i) => {
             const isRight = i === q.answerIndex
             const isChosen = i === chosen
@@ -214,9 +224,10 @@ export function QuizRunner({ questions, onNewQuiz, newQuizLabel, onFinish, after
                   disabled={answered}
                   aria-pressed={isChosen}
                   className={cn(
-                    'flex min-h-14 w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-left text-[15px] leading-snug motion-safe:transition-colors',
-                    !answered && 'border-line bg-surface text-ink hover:border-brand hover:bg-brand-soft/50',
-                    answered && isRight && 'border-brand bg-brand-soft text-ink',
+                    // The kit's secondary button, sized up for reading: surface, hairline, a surface step on hover.
+                    'flex min-h-14 w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-[15px] leading-snug transition-colors duration-150 ease-atlas',
+                    !answered && 'border-line-strong bg-surface text-ink hover:bg-surface-2',
+                    answered && isRight && 'border-ink-3 bg-surface-2 text-ink',
                     answered && isChosen && !isRight && 'border-line-strong bg-surface-2 text-ink',
                     answered && !reveal && 'border-line bg-surface text-ink-3',
                     answered && 'cursor-default',
@@ -224,36 +235,40 @@ export function QuizRunner({ questions, onNewQuiz, newQuizLabel, onFinish, after
                 >
                   <span
                     className={cn(
-                      'flex size-7 shrink-0 items-center justify-center rounded-lg text-xs font-semibold',
+                      'flex size-7 shrink-0 items-center justify-center rounded-md font-mono text-xs',
                       answered && isRight ? 'bg-brand text-brand-ink' : answered && isChosen ? 'bg-surface-3 text-bad-text' : 'bg-surface-2 text-ink-2',
                     )}
                     aria-hidden
                   >
-                    {answered && isRight ? <Check className="size-4" /> : answered && isChosen ? <X className="size-4" /> : LETTERS[i]}
+                    {answered && isRight ? <Icon as={Check} /> : answered && isChosen ? <Icon as={X} /> : LETTERS[i]}
                   </span>
                   <span className="min-w-0 flex-1">
                     <RichText text={opt} />
                   </span>
-                  {answered && isRight && <span className="shrink-0 text-xs font-semibold text-brand-text">Correct answer</span>}
-                  {answered && isChosen && !isRight && <span className="shrink-0 text-xs font-semibold text-bad-text">Your answer</span>}
+                  {answered && isRight && <span className="shrink-0 text-xs font-medium text-ink-2">Correct answer</span>}
+                  {answered && isChosen && !isRight && <span className="shrink-0 text-xs font-medium text-bad-text">Your answer</span>}
                 </button>
               </li>
             )
           })}
         </ul>
 
-        {!answered && <p className="mt-3 text-xs text-ink-3 max-sm:hidden">Tip: press 1–{q.options.length} on your keyboard to answer.</p>}
+        {!answered && (
+          <p className="mt-4 flex items-center gap-1 text-xs text-ink-3 max-sm:hidden">
+            Press <kbd className={KEYCAP}>1</kbd>–<kbd className={KEYCAP}>{q.options.length}</kbd> on your keyboard to answer
+          </p>
+        )}
 
         {answered && (
-          <div className="mt-5 rounded-xl bg-surface-2 p-4 motion-safe:animate-[atlas-pop_180ms_ease-out]" role="status" aria-live="polite" data-testid="quiz-feedback">
-            <p className="font-semibold text-ink">{right ? '🎉 That’s right!' : '💡 Not quite.'}</p>
-            {q.explanation && <Markdown className="mt-1 text-[0.94rem] text-ink-2">{q.explanation}</Markdown>}
+          <div className="mt-6 rounded-xl bg-surface-2 p-4 motion-safe:animate-[atlas-pop_180ms_cubic-bezier(0.22,1,0.36,1)]" role="status" aria-live="polite" data-testid="quiz-feedback">
+            <p className="font-medium text-ink">{right ? 'Correct' : 'Not this one'}</p>
+            {q.explanation && <Markdown className="mt-1 text-[15px] text-ink-2">{q.explanation}</Markdown>}
           </div>
         )}
 
         {answered && (
-          <div className="mt-5 flex justify-end">
-            <Button ref={nextRef} variant="primary" size="lg" iconRight={<ArrowRight className="size-4" aria-hidden />} onClick={next}>
+          <div className="mt-6 flex justify-end">
+            <Button ref={nextRef} variant="primary" size="lg" iconRight={<Icon as={ArrowRight} />} onClick={next}>
               {index + 1 < total ? 'Next question' : 'See my score'}
             </Button>
           </div>

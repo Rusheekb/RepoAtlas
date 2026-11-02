@@ -20,7 +20,7 @@ export interface StackedBarProps {
 
 /**
  * A thin segmented bar (one whole split into parts): 2px surface gaps between parts, 4px rounded ends,
- * a tall invisible hover target per part, one shared tooltip and a legend with names and shares.
+ * a tall invisible hover target per part, one shared tooltip and a legend with names and mono shares.
  */
 export function StackedBar({
   segments,
@@ -38,7 +38,7 @@ export function StackedBar({
   if (!segments.length) {
     return (
       <div className={cn('w-full', className)}>
-        <div className="w-full rounded-[4px] bg-surface-3" style={{ height: thickness }} role="img" aria-label={emptyLabel} />
+        <div className="w-full rounded-sm bg-surface-3" style={{ height: thickness }} role="img" aria-label={emptyLabel} />
         {showLegend && <p className="mt-2 text-xs text-ink-3">{emptyLabel}</p>}
       </div>
     )
@@ -47,11 +47,11 @@ export function StackedBar({
   const last = segments.length - 1
   return (
     <div ref={containerRef} className={cn('relative w-full', className)}>
-      <div role="img" aria-label={ariaLabel} className="flex w-full gap-[2px]" onPointerLeave={() => tipRef.current?.hide()}>
+      <div role="img" aria-label={ariaLabel} className="flex w-full gap-0.5" onPointerLeave={() => tipRef.current?.hide()}>
         {segments.map((s, i) => (
           <div
             key={s.key}
-            className="group flex min-w-[3px] cursor-default items-center py-1.5"
+            className="group flex min-w-1 cursor-default items-center py-1.5"
             style={{ flexGrow: s.value, flexBasis: 0 }}
             onPointerEnter={(e) => {
               const value = formatValue(s)
@@ -69,9 +69,9 @@ export function StackedBar({
           >
             <div
               className={cn(
-                'w-full motion-safe:transition-[filter] group-hover:brightness-110 dark:group-hover:brightness-125',
-                i === 0 && 'rounded-l-[4px]',
-                i === last && 'rounded-r-[4px]',
+                'w-full group-hover:opacity-80 motion-safe:transition-opacity motion-safe:duration-150 motion-safe:ease-atlas',
+                i === 0 && 'rounded-l-sm',
+                i === last && 'rounded-r-sm',
               )}
               style={{ height: thickness, background: s.color }}
             />
@@ -79,12 +79,12 @@ export function StackedBar({
         ))}
       </div>
       {showLegend && (
-        <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5 text-xs" aria-label="Legend">
+        <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs" aria-label="Legend">
           {segments.map((s) => (
             <li key={s.key} className="inline-flex min-w-0 items-center gap-1.5" title={s.description}>
-              <span className="size-2.5 shrink-0 rounded-full" style={{ background: s.color }} aria-hidden />
+              <span className="size-2 shrink-0 rounded-full" style={{ background: s.color }} aria-hidden />
               <span className="truncate text-ink-2">{s.label}</span>
-              <span className="text-ink-3 tabular-nums">{formatPercent(s.percent)}</span>
+              <span className="text-meta">{formatPercent(s.percent)}</span>
             </li>
           ))}
         </ul>

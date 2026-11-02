@@ -84,9 +84,9 @@ export default function ConceptsPage() {
 
   return (
     <>
-      <div className="flex h-full min-h-[600px] shrink-0 flex-col gap-4 p-4 sm:p-6" data-testid="concepts-page">
+      <div className="flex h-full min-h-150 shrink-0 flex-col gap-4 p-4 sm:p-6" data-testid="concepts-page">
         <ViewHeader
-          emoji={info.emoji}
+          view="concepts"
           title={info.label}
           hint={HINT}
           actions={
@@ -97,8 +97,8 @@ export default function ConceptsPage() {
                 value={source}
                 onChange={setPref}
                 options={[
-                  { value: 'ai', label: '✨ Claude’s map', title: 'The map Claude drew after reading the code' },
-                  { value: 'starter', label: '⚡ Quick map', title: 'The map we made instantly from the project’s structure' },
+                  { value: 'ai', label: 'Claude’s map', title: 'The map Claude drew after reading the code' },
+                  { value: 'starter', label: 'Quick map', title: 'The map we made instantly from the project’s structure' },
                 ]}
               />
             ) : undefined
@@ -119,25 +119,25 @@ export default function ConceptsPage() {
           generateLabel="Generate a smarter map with Claude"
           busyLabel="Claude is drawing a smarter map of the key ideas"
           pitch="This quick map was made from the project’s structure. Claude can read the actual code and find the ideas that really matter."
-          doneNote={source === 'ai' ? 'You’re looking at Claude’s map, drawn from the actual code.' : 'Claude’s map is ready: switch to it with the toggle above.'}
+          doneNote={source === 'ai' ? 'You’re looking at Claude’s map, drawn from the actual code' : 'Claude’s map is ready: switch to it with the toggle above'}
           promptTask={{ kind: 'concepts' }}
         />
         <section
           aria-label="Concept map"
-          className="relative min-h-[460px] flex-1 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm sm:min-h-[380px]"
+          className="relative min-h-115 flex-1 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm sm:min-h-95"
         >
           <ConceptGraph map={map} selectedId={selectedId} seenIds={seenIds} onSelect={onGraphSelect} />
         </section>
       </div>
 
       {cards.length > 0 && (
-        <section aria-labelledby="concept-cards-title" className="shrink-0 px-4 pb-10 sm:px-6">
-          <div className="mb-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <section aria-labelledby="concept-cards-title" className="shrink-0 px-4 pt-4 pb-12 sm:px-6">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
             <div>
-              <h2 id="concept-cards-title" className="text-lg font-semibold text-ink">
+              <h2 id="concept-cards-title" className="text-lg font-medium text-ink">
                 All {pluralize(cards.length, 'key idea')}
               </h2>
-              <p className="text-sm text-ink-2">The most central ideas come first. Pick one to read the full explanation.</p>
+              <p className="mt-1 text-sm text-ink-2">The most central ideas come first. Pick one to read the full explanation.</p>
             </div>
             {categories.length >= 2 && <ConceptLegend categories={categories} />}
           </div>

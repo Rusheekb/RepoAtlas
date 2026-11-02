@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { AlertTriangle, Check, ClipboardCopy, ExternalLink, History, KeyRound, RefreshCw, Settings, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Check, ClipboardCopy, ExternalLink, History, KeyRound, PenLine, RefreshCw, Settings, X } from 'lucide-react'
 import { useCopyPrompt, type AiRunState, type AiStatus, type PromptTask } from '@/ai'
 import { Button, Modal } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
@@ -82,10 +82,16 @@ export function CopyPromptButton({
         variant={variant}
         onClick={() => void onClick()}
         loading={status === 'working'}
-        icon={status === 'copied' ? <Check className="size-4 text-good-text" aria-hidden /> : <ClipboardCopy className="size-4" aria-hidden />}
+        icon={
+          status === 'copied' ? (
+            <Check className="size-4 text-good-text" strokeWidth={1.5} aria-hidden />
+          ) : (
+            <ClipboardCopy className="size-4" strokeWidth={1.5} aria-hidden />
+          )
+        }
       >
         {status === 'copied' ? (
-          'Copied! Now paste it into Claude'
+          'Copied, now paste it into Claude'
         ) : (
           <>
             <span className="sm:hidden">{shortLabel}</span>
@@ -108,9 +114,9 @@ export function CopyPromptButton({
               href={CLAUDE_NEW_CHAT_URL}
               target="_blank"
               rel="noreferrer noopener"
-              className="inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-medium text-brand-text hover:bg-brand-soft"
+              className="inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-medium text-ink-2 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
             >
-              Open claude.ai <ExternalLink className="size-4" aria-hidden />
+              Open claude.ai <ExternalLink className="size-4" strokeWidth={1.5} aria-hidden />
             </a>
             <Button variant="primary" onClick={() => setManual(null)}>
               Done
@@ -126,7 +132,7 @@ export function CopyPromptButton({
           readOnly
           value={manual ?? ''}
           onFocus={(e) => e.currentTarget.select()}
-          className="h-72 w-full resize-none rounded-xl border border-line bg-surface-2 p-3 font-mono text-xs text-ink"
+          className="h-72 w-full resize-none rounded-lg border border-line bg-surface-2 p-3 font-mono text-xs text-ink"
         />
       </Modal>
     </>
@@ -154,12 +160,13 @@ export function AiProgress({
   const fraction = progressChars > 0 ? 0.12 + 0.83 * (1 - Math.exp(-progressChars / 4000)) : 0.06
   return (
     <div
-      className={cn('flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-line bg-brand-soft px-4 py-3.5', className)}
+      className={cn('flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-sm', className)}
       data-testid="ai-progress"
     >
-      <Sparkles className="size-5 shrink-0 text-brand-text motion-safe:animate-pulse" aria-hidden />
+      {/* Live: Claude is working right now. */}
+      <span className="size-4 shrink-0 animate-spin rounded-full border-2 border-ink-3 border-r-transparent" aria-hidden />
       <div className="min-w-0 flex-[1_1_14rem]">
-        <p className="text-sm font-semibold text-ink">{label}</p>
+        <p className="text-sm font-medium text-ink">{label}</p>
         <p className="mt-0.5 text-xs text-ink-2">
           {/* Only the status is announced; the character count changes with every word, so it stays visual. */}
           <span role="status" aria-live="polite">
@@ -176,15 +183,16 @@ export function AiProgress({
           role="progressbar"
           aria-label={label}
           aria-valuetext={aiStatusText(status)}
-          className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface"
+          className="mt-2 h-1 overflow-hidden rounded-xs bg-surface-3"
         >
+          {/* Grows with transform (not width) so it stays smooth on slow devices. */}
           <div
-            className="h-full rounded-full bg-brand motion-safe:transition-[width] motion-safe:duration-700"
-            style={{ width: `${Math.round(fraction * 100)}%` }}
+            className="h-full origin-left rounded-xs bg-ink-2 motion-safe:transition-transform motion-safe:duration-500 motion-safe:ease-atlas"
+            style={{ transform: `scaleX(${Math.round(fraction * 100) / 100})` }}
           />
         </div>
       </div>
-      <Button size="sm" variant="secondary" onClick={onCancel} icon={<X className="size-4" aria-hidden />}>
+      <Button size="sm" variant="secondary" onClick={onCancel} icon={<X className="size-4" strokeWidth={1.5} aria-hidden />}>
         Cancel
       </Button>
     </div>
@@ -228,9 +236,9 @@ export interface AiAssistProps {
 }
 
 /**
- * Everything AI around a visual view, in one calm card: an invitation to add a key (or copy a prompt) when there is
- * none, a "Generate … with Claude" button, live progress with Cancel while Claude works, and friendly errors
- * (a bad key gets an "Open Settings" button).
+ * Everything AI around a visual view, in one calm card: a plain note on what Claude would add plus a way to add a key
+ * (or copy a prompt) when there is none, a "Generate … with Claude" button, live progress with Cancel while Claude
+ * works, and friendly errors (a bad key gets an "Open Settings" button).
  */
 export function AiAssist({
   hasKey,
@@ -259,19 +267,19 @@ export function AiAssist({
   const errorBox = error ? (
     <div
       role="alert"
-      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-sm"
+      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-sm"
       data-testid="ai-error"
     >
-      <AlertTriangle className="size-5 shrink-0 text-warn-text" aria-hidden />
+      <AlertTriangle className="size-4 shrink-0 text-warn-text" strokeWidth={1.5} aria-hidden />
       <p className="min-w-0 flex-[1_1_16rem] text-sm text-ink">{error}</p>
       <div className="flex flex-wrap gap-2">
         {isKeyProblem(errorKind) ? (
-          <Button size="sm" variant="primary" onClick={() => openSettings('ai')} icon={<Settings className="size-4" aria-hidden />}>
+          <Button size="sm" variant="primary" onClick={() => openSettings('ai')} icon={<Settings className="size-4" strokeWidth={1.5} aria-hidden />}>
             Open Settings
           </Button>
         ) : (
           hasKey && (
-            <Button size="sm" variant="secondary" onClick={onGenerate} icon={<RefreshCw className="size-4" aria-hidden />}>
+            <Button size="sm" variant="secondary" onClick={onGenerate} icon={<RefreshCw className="size-4" strokeWidth={1.5} aria-hidden />}>
               Try again
             </Button>
           )
@@ -284,33 +292,28 @@ export function AiAssist({
     return (
       <div className={cn('space-y-3', className)}>
         {errorBox}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-sm" data-testid="ai-callout">
-          <span className="hidden size-9 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-lg sm:flex" aria-hidden>
-            ✨
-          </span>
-          <div className="min-w-0 flex-[1_1_18rem] text-sm text-ink-2">
-            <p className="font-medium text-ink">
-              <span className="sm:hidden" aria-hidden>
-                ✨{' '}
-              </span>
-              Want Claude’s take?
-            </p>
-            <p className="mt-0.5">
-              {pitch}{' '}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-sm" data-testid="ai-callout">
+          <div className="min-w-0 flex-[1_1_18rem] text-sm">
+            <p className="text-ink">{pitch}</p>
+            <p className="mt-1 text-ink-2">
               <span className="max-sm:hidden">Add your own Claude key (it stays in this browser), or copy a ready-made prompt and paste it into </span>
               <span className="sm:hidden">Add a key, or copy a prompt for </span>
-              <a href={CLAUDE_NEW_CHAT_URL} target="_blank" rel="noreferrer noopener" className="font-medium text-brand-text underline underline-offset-2">
+              <a
+                href={CLAUDE_NEW_CHAT_URL}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-ink underline decoration-line-strong underline-offset-2 transition-colors duration-150 ease-atlas hover:decoration-ink"
+              >
                 claude.ai
                 <span className="sr-only"> (opens in a new tab)</span>
               </a>
-              .
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="primary" onClick={() => openSettings('ai')} icon={<KeyRound className="size-4" aria-hidden />}>
+            <Button size="sm" variant="secondary" onClick={() => openSettings('ai')} icon={<KeyRound className="size-4" strokeWidth={1.5} aria-hidden />}>
               Add a Claude key
             </Button>
-            <CopyPromptButton task={promptTask} />
+            <CopyPromptButton task={promptTask} variant="ghost" />
           </div>
         </div>
       </div>
@@ -331,37 +334,28 @@ export function AiAssist({
     <div className={cn('space-y-3', className)}>
       {errorBox}
       {hasData ? (
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-line bg-surface px-4 py-2.5 shadow-sm">
-          <p className="flex min-w-0 items-center gap-2 text-sm text-ink-2" data-testid={stale ? 'ai-stale' : undefined}>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-line bg-surface py-2 pr-2 pl-4 shadow-sm">
+          <p className="flex min-w-0 items-start gap-2 text-sm text-ink-2" data-testid={stale ? 'ai-stale' : undefined}>
             {stale ? (
               <>
-                <History className="size-4 shrink-0 text-warn-text" aria-hidden />
+                <History className="mt-0.5 size-4 shrink-0 text-ink-3" strokeWidth={1.5} aria-hidden />
                 <span>
-                  <span className="font-medium text-ink">Made for an older version of the code.</span> The project has changed since Claude
-                  wrote this — refresh it to include the latest changes.
+                  <span className="text-ink">Made for an older version of the code.</span> The project has changed since Claude wrote this, so
+                  refresh it to include the latest changes.
                 </span>
               </>
             ) : (
-              <>
-                <Sparkles className="size-4 shrink-0 text-brand-text" aria-hidden />
-                {doneNote ?? 'Made by Claude from the actual code.'}
-              </>
+              <span>{doneNote ?? 'Made by Claude from the actual code'}</span>
             )}
           </p>
-          <Button size="sm" variant={stale ? 'secondary' : 'ghost'} onClick={onGenerate} icon={<RefreshCw className="size-4" aria-hidden />}>
+          <Button size="sm" variant={stale ? 'secondary' : 'ghost'} onClick={onGenerate} icon={<RefreshCw className="size-4" strokeWidth={1.5} aria-hidden />}>
             {stale ? 'Update with Claude' : regenerateLabel}
           </Button>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-sm" data-testid="ai-callout">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-lg" aria-hidden>
-            ✨
-          </span>
-          <p className="min-w-0 flex-[1_1_18rem] text-sm text-ink-2">
-            <span className="font-medium text-ink">Claude is ready to help. </span>
-            {pitch}
-          </p>
-          <Button variant="primary" size="sm" onClick={onGenerate} icon={<Sparkles className="size-4" aria-hidden />}>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-sm" data-testid="ai-callout">
+          <p className="min-w-0 flex-[1_1_18rem] text-sm text-ink">{pitch}</p>
+          <Button variant="primary" size="sm" onClick={onGenerate} icon={<PenLine className="size-4" strokeWidth={1.5} aria-hidden />}>
             {generateLabel}
           </Button>
         </div>

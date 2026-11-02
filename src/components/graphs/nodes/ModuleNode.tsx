@@ -2,6 +2,8 @@ import { memo } from 'react'
 import type { Node, NodeProps } from '@xyflow/react'
 import { Check } from 'lucide-react'
 import { cn } from '@/components/ui/cn'
+import { Icon, LayerDot } from '@/components/ui/icons'
+import { YouAreHerePin } from '@/components/ui/YouAreHere'
 import { formatBytes, formatCompact, pluralize } from '@/core/format'
 import { LAYER_INFO } from '@/core/labels'
 import type { ModuleInfo } from '@/core/types'
@@ -23,42 +25,44 @@ export function moduleSizeLabel(m: Pick<ModuleInfo, 'fileCount' | 'lines' | 'byt
   return files
 }
 
-/** Architecture map card: layer strip, emoji + name, plain-English role, size, mini layer bar, "explored" check. */
+/**
+ * Architecture map card: thin layer strip, layer dot + name, plain-English role, size in mono, mini layer bar and a
+ * quiet "explored" check. The selected card carries the survey-red ring and the "you are here" pin.
+ */
 export const ModuleNode = memo(function ModuleNode({ id, data }: NodeProps<ModuleFlowNode>) {
   const h = useFlowHighlight()
   const v = nodeVisual(h, id)
   const m = data.module
-  const layer = LAYER_INFO[m.layer] ?? LAYER_INFO.other
+  const layerKey = m.layer in LAYER_INFO ? m.layer : 'other'
+  const layer = LAYER_INFO[layerKey]
   return (
-    <div
-      className={cn(
-        'atlas-node relative flex h-full w-full overflow-hidden rounded-xl border bg-surface text-left shadow-sm motion-safe:transition-[opacity,box-shadow,border-color] motion-safe:duration-150',
-        v.selected ? 'border-brand ring-2 ring-brand' : v.highlighted ? 'border-brand' : 'border-line hover:border-line-strong hover:shadow-md',
-        v.dimmed && 'opacity-35',
-      )}
-    >
-      <span className="w-1.5 shrink-0" style={{ background: layer.color }} aria-hidden />
-      <div className="flex min-w-0 flex-1 flex-col px-3 pt-2.5 pb-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 text-lg leading-none" aria-hidden>
-            {m.emoji || layer.emoji}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{m.name}</span>
-          {v.seen && (
-            <span
-              className="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border border-line bg-surface-2 text-good-text"
-              title="You’ve explored this part"
-            >
-              <Check className="size-3" strokeWidth={3} aria-hidden />
-              <span className="sr-only">Explored</span>
-            </span>
-          )}
+    <>
+      <div
+        className={cn(
+          'atlas-node relative flex h-full w-full overflow-hidden rounded-xl border bg-surface text-left shadow-sm motion-safe:transition-[opacity,border-color] motion-safe:duration-150 motion-safe:ease-atlas',
+          v.selected ? 'border-accent ring-1 ring-accent' : v.highlighted ? 'border-line-strong' : 'border-line hover:border-ink-3',
+          v.dimmed && 'opacity-35',
+        )}
+      >
+        <span className="w-1 shrink-0" style={{ background: layer.color }} aria-hidden />
+        <div className="flex min-w-0 flex-1 flex-col px-3 pt-3 pb-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <LayerDot layer={layerKey} />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{m.name}</span>
+            {v.seen && (
+              <span className="shrink-0 text-ink-3" title="You’ve explored this part">
+                <Icon as={Check} size={14} />
+                <span className="sr-only">Explored</span>
+              </span>
+            )}
+          </div>
+          <p className="mt-1 truncate text-[13px] text-ink-2">{m.role}</p>
+          <p className="mt-0.5 truncate text-meta">{moduleSizeLabel(m)}</p>
+          <MiniLayerBar breakdown={m.layerBreakdown} className="mt-auto" />
         </div>
-        <p className="mt-1 truncate text-xs text-ink-2">{m.role}</p>
-        <p className="mt-0.5 truncate text-[11px] text-ink-3">{moduleSizeLabel(m)}</p>
-        <MiniLayerBar breakdown={m.layerBreakdown} className="mt-auto" />
+        <HiddenHandles />
       </div>
-      <HiddenHandles />
-    </div>
+      {v.selected && <YouAreHerePin size={20} className="pointer-events-none absolute -top-3.5 right-3" />}
+    </>
   )
 })

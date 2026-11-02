@@ -5,6 +5,7 @@ import { FILE_GRAPH_CAP } from '@/components/graphs/fileGraphData'
 import { useElementSize } from '@/components/graphs/hooks'
 import { Button, Segmented } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { LayerDot } from '@/components/ui/icons'
 import { formatNumber, pluralize } from '@/core/format'
 import { LAYER_INFO } from '@/core/labels'
 import type { AnalyzedFile, FileEdge, ModuleInfo } from '@/core/types'
@@ -50,7 +51,7 @@ export function ModuleDrillDown({
   className,
 }: ModuleDrillDownProps) {
   const list = useMemo(() => moduleFiles(module, files), [module, files])
-  const layer = LAYER_INFO[module.layer] ?? LAYER_INFO.other
+  const layerId = LAYER_INFO[module.layer] ? module.layer : 'other'
   // Outside files help in small parts; in big ones they crowd the picture, so they start hidden there.
   const [neighborChoice, setNeighborChoice] = useState<'inside' | 'around' | null>(null)
   const outside = useMemo(() => outsideNeighborCount(list, files), [list, files])
@@ -77,34 +78,38 @@ export function ModuleDrillDown({
         <nav aria-label="Where you are" className="min-w-0">
           <ol className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
             <li>
-              <button type="button" onClick={onBack} className="rounded-md px-1.5 py-0.5 font-medium text-brand-text hover:bg-brand-soft">
+              <button
+                type="button"
+                onClick={onBack}
+                className="inline-flex h-7 items-center rounded-md px-2 text-ink-2 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
+              >
                 All parts
               </button>
             </li>
             <li className="flex min-w-0 items-center gap-1">
-              <ChevronRight className="size-3.5 shrink-0 text-ink-3" aria-hidden />
-              <span className="flex min-w-0 items-center gap-1.5 px-1 font-semibold text-ink" aria-current="location">
-                <span aria-hidden>{module.emoji || layer.emoji}</span>
+              <ChevronRight className="size-3.5 shrink-0 text-ink-3" strokeWidth={1.5} aria-hidden />
+              <span className="flex min-w-0 items-center gap-2 px-1 font-medium text-ink" aria-current="location">
+                <LayerDot layer={layerId} />
                 <span className="truncate">{module.name}</span>
               </span>
             </li>
           </ol>
         </nav>
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={onExplainModule} icon={<Info className="size-4" aria-hidden />}>
+          <Button size="sm" variant="ghost" onClick={onExplainModule} icon={<Info className="size-4" strokeWidth={1.5} aria-hidden />}>
             What is this part?
           </Button>
-          <Button size="sm" variant="secondary" onClick={onBack} icon={<ArrowLeft className="size-4" aria-hidden />}>
+          <Button size="sm" variant="secondary" onClick={onBack} icon={<ArrowLeft className="size-4" strokeWidth={1.5} aria-hidden />}>
             Back to all parts
           </Button>
         </div>
       </div>
-      <p className="text-sm text-ink-2">
+      <p className="max-w-3xl text-sm leading-relaxed text-ink-2">
         <span className="font-medium text-ink">{module.role}.</span> {pluralize(module.fileCount, 'file')}
         {module.path ? (
           <>
             {' '}
-            in <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[0.85em] text-ink">{module.path}/</code>
+            in <code className="rounded border border-line bg-surface-2 px-1 font-mono text-[13px] text-ink">{module.path}/</code>
           </>
         ) : (
           ' at the top level of the project'
@@ -133,8 +138,8 @@ export function ModuleDrillDown({
             value={direction}
             onChange={onDirectionChange}
             options={[
-              { value: 'LR', label: '→ Sideways', title: 'Arrows flow from left to right' },
-              { value: 'TB', label: '↓ Top-down', title: 'Arrows flow from top to bottom' },
+              { value: 'LR', label: 'Sideways', title: 'Arrows flow from left to right' },
+              { value: 'TB', label: 'Top-down', title: 'Arrows flow from top to bottom' },
             ]}
           />
         )}
@@ -148,7 +153,7 @@ export function ModuleDrillDown({
           </Button>
         )}
       </div>
-      <div ref={boxRef} className="relative min-h-[360px] flex-1 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+      <div ref={boxRef} className="relative min-h-90 flex-1 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
         <FileGraph
           files={list}
           edges={fileEdges}

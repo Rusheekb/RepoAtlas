@@ -8,7 +8,7 @@
   --xy-background-color: transparent;
   --xy-edge-stroke: var(--edge);
   --xy-edge-stroke-width: 1.5;
-  --xy-edge-stroke-selected: var(--brand);
+  --xy-edge-stroke-selected: var(--ink);
   --xy-node-border-radius: 12px;
   --xy-node-background-color: transparent;
   --xy-node-border: none;
@@ -76,8 +76,8 @@
   border-bottom: 0;
 }
 .atlas-flow .react-flow__controls-button svg {
-  max-width: 13px;
-  max-height: 13px;
+  max-width: 12px;
+  max-height: 12px;
   fill: currentColor;
 }
 .atlas-flow .react-flow__controls-button:focus-visible {
@@ -97,10 +97,9 @@
   margin: 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  background: var(--surface);
   box-shadow: var(--shadow-sm);
   padding: 8px 12px;
-  backdrop-filter: blur(6px);
 }
 
 .atlas-flow .react-flow__edge {
@@ -114,7 +113,7 @@
 @media (max-width: 640px) {
   .atlas-flow .react-flow__panel.atlas-flow-panel {
     margin: 8px;
-    padding: 6px 10px;
+    padding: 8px;
   }
 }
 
@@ -136,14 +135,16 @@
   stroke: var(--line-strong);
   fill: var(--surface-2);
 }
+/* The selected file: survey-red outline (the "you are here" pin sits in its corner when it fits). */
 .atlas-treemap .tm-selected,
 .atlas-treemap .tm-selected:hover {
-  stroke: var(--ink);
-  stroke-width: 2.5px;
+  stroke: var(--accent);
+  stroke-width: 2px;
 }
 .atlas-treemap .tm-item:focus-visible {
   stroke: var(--focus);
-  stroke-width: 3px;
+  stroke-width: 2px;
+  stroke-dasharray: 4 2;
 }
 .atlas-treemap .tm-label {
   pointer-events: none;

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, FolderOpen } from 'lucide-react'
 import { cn } from '@/components/ui/cn'
+import { LayerDot } from '@/components/ui/icons'
 import { formatNumber } from '@/core/format'
 import { LAYER_INFO } from '@/core/labels'
 import {
@@ -44,8 +45,8 @@ function Connections({ names, count }: { names: string[]; count: number }) {
   if (!count) return <span className="text-ink-3">—</span>
   return (
     <span className="inline-flex flex-col items-end">
-      <span className="font-medium text-ink tabular-nums">{formatNumber(count)}</span>
-      <span className="hidden max-w-[14rem] truncate text-xs text-ink-3 lg:block" title={names.join(', ')}>
+      <span className="text-ink tabular-nums">{formatNumber(count)}</span>
+      <span className="hidden max-w-56 truncate text-xs text-ink-3 lg:block" title={names.join(', ')}>
         {nameList(names, 2)}
       </span>
       <span className="sr-only lg:hidden">: {nameList(names, 6)}</span>
@@ -81,19 +82,19 @@ export function ModuleTable({ rows, selectedId, seenIds, onExplain, onOpen, clas
                   key={c.key}
                   scope="col"
                   aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-                  className={cn('px-2 py-2 font-semibold first:pl-4 sm:px-3', c.numeric ? 'text-right' : 'text-left', c.className)}
+                  className={cn('px-2 py-2 font-medium first:pl-3 sm:px-3', c.numeric ? 'text-right' : 'text-left', c.className)}
                 >
                   <button
                     type="button"
                     onClick={() => toggleSort(c.key)}
                     className={cn(
-                      'inline-flex items-center gap-1 rounded-md px-1 py-0.5 whitespace-nowrap hover:text-ink',
+                      'inline-flex h-6 items-center gap-1 rounded-md px-1 whitespace-nowrap transition-colors duration-150 ease-atlas hover:text-ink',
                       active && 'text-ink',
                       c.numeric && 'flex-row-reverse',
                     )}
                   >
                     {c.label}
-                    <Icon className={cn('size-3.5', !active && 'opacity-50')} aria-hidden />
+                    <Icon className={cn('size-3.5', !active && 'opacity-50')} strokeWidth={1.5} aria-hidden />
                     <span className="sr-only">{active ? `, sorted ${sort.dir === 'asc' ? 'A to Z / smallest first' : 'Z to A / biggest first'}` : ', sort'}</span>
                   </button>
                 </th>
@@ -108,7 +109,7 @@ export function ModuleTable({ rows, selectedId, seenIds, onExplain, onOpen, clas
           {sorted.length === 0 && (
             <tr>
               <td colSpan={COLUMNS.length + 1} className="px-4 py-8 text-center text-sm text-ink-2">
-                No parts to list yet.
+                No parts to list yet
               </td>
             </tr>
           )}
@@ -119,47 +120,51 @@ export function ModuleTable({ rows, selectedId, seenIds, onExplain, onOpen, clas
             return (
               <tr
                 key={m.id}
-                className={cn('border-b border-line last:border-b-0', selected ? 'bg-brand-soft' : 'hover:bg-surface-2')}
+                className={cn(
+                  'border-b border-line transition-colors duration-150 ease-atlas last:border-b-0',
+                  selected ? 'bg-brand-soft' : 'hover:bg-surface-2',
+                )}
                 aria-current={selected ? 'true' : undefined}
               >
-                <th scope="row" className="max-w-[18rem] py-2.5 pr-3 pl-4 text-left font-normal">
-                  <button type="button" onClick={() => onExplain(m.id)} className="group flex min-w-0 items-start gap-2.5 rounded-lg text-left">
-                    <span className="mt-0.5 text-lg leading-none" aria-hidden>
-                      {m.emoji || layer.emoji}
+                <th
+                  scope="row"
+                  // The selected part: a surface step plus a thin survey-red mark on its leading edge.
+                  className={cn('max-w-72 py-3 pr-3 pl-4 text-left font-normal', selected && 'shadow-[inset_2px_0_0_var(--accent)]')}
+                >
+                  <button type="button" onClick={() => onExplain(m.id)} className="group flex min-w-0 items-start gap-2 rounded-md text-left">
+                    <span className="flex h-5 w-4 shrink-0 items-center justify-center">
+                      <LayerDot layer={layer === LAYER_INFO.other ? 'other' : m.layer} />
                     </span>
                     <span className="min-w-0">
                       <span className="flex items-center gap-1.5">
-                        <span className="truncate font-semibold text-ink group-hover:text-brand-text group-hover:underline">{m.name}</span>
+                        <span className="truncate font-medium text-ink decoration-line-strong underline-offset-2 group-hover:underline">{m.name}</span>
                         {seen && (
                           <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-line bg-surface-2 text-good-text" title="You’ve explored this part">
-                            <Check className="size-2.5" strokeWidth={3} aria-hidden />
+                            <Check className="size-2.5" strokeWidth={2.5} aria-hidden />
                             <span className="sr-only">(explored)</span>
                           </span>
                         )}
                       </span>
-                      <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-ink-3">
-                        <span className="size-2 shrink-0 rounded-full" style={{ background: layer.color }} aria-hidden />
-                        <span className="truncate">{layer.label}</span>
-                      </span>
-                      <span className="mt-0.5 block text-xs text-ink-2 md:hidden">{m.role}</span>
+                      <span className="mt-0.5 block truncate text-xs text-ink-3">{layer.label}</span>
+                      {m.role !== layer.label && <span className="mt-0.5 block text-xs text-ink-2 md:hidden">{m.role}</span>}
                     </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => onOpen(m.id)}
-                    className="mt-1 ml-7 inline-flex items-center gap-1 rounded-md text-xs font-medium text-brand-text hover:underline sm:hidden"
+                    className="mt-1 ml-6 inline-flex items-center gap-1 rounded-md text-xs font-medium text-ink-2 underline-offset-2 hover:text-ink hover:underline sm:hidden"
                   >
-                    <FolderOpen className="size-3.5 shrink-0" aria-hidden />
+                    <FolderOpen className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden />
                     See its {m.fileCount === 1 ? 'file' : `${formatNumber(m.fileCount)} files`}
                   </button>
                 </th>
-                <td className="hidden max-w-[16rem] px-3 py-2.5 text-ink-2 md:table-cell">{m.role}</td>
-                <td className="hidden px-3 py-2.5 text-right text-ink tabular-nums sm:table-cell">{formatNumber(m.fileCount)}</td>
-                <td className="hidden px-3 py-2.5 text-right text-ink-2 tabular-nums sm:table-cell">{m.lines > 0 ? formatNumber(m.lines) : '—'}</td>
-                <td className="px-2 py-2.5 text-right sm:px-3">
+                <td className="hidden max-w-64 px-3 py-3 text-ink-2 md:table-cell">{m.role}</td>
+                <td className="hidden px-3 py-3 text-right text-ink tabular-nums sm:table-cell">{formatNumber(m.fileCount)}</td>
+                <td className="hidden px-3 py-3 text-right text-ink-2 tabular-nums sm:table-cell">{m.lines > 0 ? formatNumber(m.lines) : '—'}</td>
+                <td className="px-2 py-3 text-right sm:px-3">
                   <Connections names={uses.map((u) => u.name)} count={uses.length} />
                 </td>
-                <td className="px-2 py-2.5 pr-4 text-right sm:px-3">
+                <td className="px-2 py-3 pr-4 text-right sm:px-3">
                   <Connections names={usedBy.map((u) => u.name)} count={usedBy.length} />
                 </td>
                 <td className="hidden py-1.5 pr-3 pl-1 text-right sm:table-cell">
@@ -168,9 +173,9 @@ export function ModuleTable({ rows, selectedId, seenIds, onExplain, onOpen, clas
                     aria-label={`See the files in ${m.name}`}
                     title="See the files inside"
                     onClick={() => onOpen(m.id)}
-                    className="inline-flex size-8 items-center justify-center rounded-lg text-ink-2 hover:bg-surface-3 hover:text-ink"
+                    className="inline-flex size-8 items-center justify-center rounded-md text-ink-2 transition-colors duration-150 ease-atlas hover:bg-surface-3 hover:text-ink"
                   >
-                    <FolderOpen className="size-4 shrink-0" aria-hidden />
+                    <FolderOpen className="size-4 shrink-0" strokeWidth={1.5} aria-hidden />
                   </button>
                 </td>
               </tr>

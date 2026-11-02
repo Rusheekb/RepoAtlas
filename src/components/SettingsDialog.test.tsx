@@ -76,11 +76,11 @@ describe('SettingsDialog', () => {
 
   it('tests the key and shows the result', async () => {
     const user = userEvent.setup()
-    ai.testConnection.mockResolvedValue({ ok: true, message: 'Connected! Claude Opus 5.5 is ready to explain code.' })
+    ai.testConnection.mockResolvedValue({ ok: true, message: 'Connected. Claude Opus 5.5 is ready to explain code.' })
     useSettings.setState({ anthropicApiKey: 'sk-ant-xyz' })
     open('ai')
     await user.click(screen.getByRole('button', { name: /test key/i }))
-    expect(await screen.findByText(/connected!/i)).toBeInTheDocument()
+    expect(await screen.findByText(/connected\./i)).toBeInTheDocument()
     expect(ai.testConnection).toHaveBeenCalledWith('sk-ant-xyz', 'claude-opus-5-5')
   })
 

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
+import { FolderOpen, SearchX } from 'lucide-react'
 import { useIsDesktop, usePrefersReducedMotion, useRepoNav } from '@/components/shell/hooks'
 import { EmptyState } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import { AboutFilePanel } from '@/components/views/reading/AboutFilePanel'
 import { CodePane } from '@/components/views/reading/CodePane'
 import { defaultFilePath, formatLineParam, parseLineParam, type LineRange } from '@/components/views/reading/explorer'
@@ -129,8 +131,8 @@ export default function ExplorerPage() {
   const askHref = file ? href('ask', { q: `In \`${file.path}\`, ` }) : href('ask')
 
   return (
-    <div className="flex shrink-0 flex-col gap-4 p-4 sm:p-6 xl:h-full xl:min-h-[620px]" data-testid="explorer-page">
-      <ViewHeader emoji={info.emoji} title={info.label} hint={HINT} />
+    <div className="flex shrink-0 flex-col gap-6 p-4 sm:p-6 xl:h-full xl:min-h-155" data-testid="explorer-page">
+      <ViewHeader view="explore" title={info.label} hint={HINT} />
 
       <div
         className={cn(
@@ -141,10 +143,10 @@ export default function ExplorerPage() {
         )}
       >
         {railed ? (
-          <FilesRail className="lg:h-[calc(100vh-11rem)] lg:max-h-[56rem] xl:h-auto xl:max-h-none" onShow={() => setFilesHidden(false)} />
+          <FilesRail className="lg:h-[calc(100vh-11rem)] lg:max-h-224 xl:h-auto xl:max-h-none" onShow={() => setFilesHidden(false)} />
         ) : (
           <FilesPane
-            className="lg:h-[calc(100vh-11rem)] lg:max-h-[56rem] xl:h-auto xl:max-h-none"
+            className="lg:h-[calc(100vh-11rem)] lg:max-h-224 xl:h-auto xl:max-h-none"
             files={files}
             selectedPath={file?.path ?? null}
             onSelect={selectFile}
@@ -159,7 +161,7 @@ export default function ExplorerPage() {
 
         {file && load ? (
           <CodePane
-            className="h-[70vh] min-h-[22rem] lg:h-[calc(100vh-11rem)] lg:max-h-[56rem] xl:h-auto xl:max-h-none"
+            className="h-[70vh] min-h-88 lg:h-[calc(100vh-11rem)] lg:max-h-224 xl:h-auto xl:max-h-none"
             file={file}
             load={load}
             onRetry={retry}
@@ -174,20 +176,23 @@ export default function ExplorerPage() {
             scrollKey={scrollKey}
           />
         ) : (
-          <section className="flex min-h-[22rem] items-center rounded-2xl border border-line bg-surface shadow-sm xl:col-span-2" data-testid="code-pane">
-            <EmptyState icon={folderAsked ? '📁' : '🔎'} title={folderAsked ? 'That’s a folder' : fileParam ? 'We couldn’t find that file' : 'Pick a file to start reading'}>
+          <section className="flex min-h-88 items-center rounded-2xl border border-line bg-surface shadow-sm xl:col-span-2" data-testid="code-pane">
+            <EmptyState
+              icon={<Icon as={folderAsked ? FolderOpen : SearchX} size={18} />}
+              title={folderAsked ? 'That’s a folder' : fileParam ? 'We couldn’t find that file' : 'Pick a file to start reading'}
+            >
               {folderAsked ? (
                 <>
-                  <code className="font-mono text-[0.92em] text-ink">{folderAsked}</code> is a folder, so we’ve opened it in the file list. Pick
+                  <code className="font-mono text-[13px] text-ink">{folderAsked}</code> is a folder, so we’ve opened it in the file list. Pick
                   any file inside to read it.
                 </>
               ) : fileParam ? (
                 <>
-                  There’s no file called <code className="font-mono text-[0.92em] text-ink">{fileParam}</code> in this version of the project. It
+                  There’s no file called <code className="font-mono text-[13px] text-ink">{fileParam}</code> in this version of the project. It
                   may have been moved or renamed. Pick another one from the list.
                 </>
               ) : (
-                'Choose any file from the list to see its code with plain-English notes alongside.'
+                'Choose any file from the list to see its code with plain-English notes alongside'
               )}
             </EmptyState>
           </section>
@@ -210,7 +215,7 @@ export default function ExplorerPage() {
         )}
       </div>
       {snapshot.treeTruncated && (
-        <p className="text-xs text-ink-3">This project is so big that GitHub only sent part of its file list, so some files may be missing here.</p>
+        <p className="text-xs text-ink-3">This project is so big that GitHub only sent part of its file list, so some files may be missing here</p>
       )}
     </div>
   )

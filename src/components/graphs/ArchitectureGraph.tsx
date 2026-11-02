@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { Position, type EdgeTypes, type NodeTypes } from '@xyflow/react'
 import { EmptyState, LayerLegend } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { ViewIcon } from '@/components/ui/icons'
 import { pluralize } from '@/core/format'
 import { LAYER_INFO } from '@/core/labels'
 import { LAYERS, type Layer, type ModuleEdge, type ModuleInfo } from '@/core/types'
@@ -117,7 +118,7 @@ export function buildArchitectureLayout(modules: readonly ModuleInfo[], moduleEd
 }
 
 /**
- * The main architecture map: one node per module (emoji, name, plain-English role, file count, layer color strip),
+ * The main architecture map: one node per module (layer dot, name, plain-English role, file count, layer color strip),
  * arrows "A uses B" weighted by link count. Layered auto-layout (dagre). Pan/zoom, fit view, minimap, keyboard focus.
  * Hovering a node highlights its neighbors and the connecting edges; selecting calls onSelect.
  */
@@ -155,7 +156,7 @@ export function ArchitectureGraph({
       if (uses.length) rows.push({ value: 'Uses:', label: list(uses) })
       if (usedBy.length) rows.push({ value: 'Used by:', label: list(usedBy) })
       return {
-        title: `${m.emoji ? `${m.emoji} ` : ''}${m.name}`,
+        title: m.name,
         subtitle: m.path ? m.path : 'Top-level files',
         color: LAYER_INFO[m.layer]?.color,
         rows,
@@ -169,7 +170,7 @@ export function ArchitectureGraph({
   if (!modules.length) {
     return (
       <div className={cn('flex h-full w-full items-center justify-center', className)} data-testid="architecture-graph">
-        <EmptyState icon="🗺️" title="No parts to map yet">
+        <EmptyState icon={<ViewIcon view="map" size={20} />} title="No parts to map yet">
           Once the project is analyzed, its main parts and how they connect will appear here.
         </EmptyState>
       </div>
@@ -203,7 +204,7 @@ export function ArchitectureGraph({
       overviewLabel={`Show all ${pluralize(modules.length, 'part')}`}
       footer={
         showLegend ? (
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
             {graph.layers.length >= 2 ? <LayerLegend layers={graph.layers} /> : <span />}
             <p className="text-xs text-ink-3">
               {linkCount

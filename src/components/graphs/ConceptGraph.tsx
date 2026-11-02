@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react'
 import type { EdgeTypes, NodeTypes } from '@xyflow/react'
 import { EmptyState } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { ViewIcon } from '@/components/ui/icons'
 import { pluralize } from '@/core/format'
 import type { Concept, ConceptCategory, ConceptMap } from '@/core/types'
 import { CONCEPT_CATEGORIES, CONCEPT_CATEGORY_INFO, conceptCategoryInfo } from './categories'
@@ -141,10 +142,10 @@ function dedupeConcepts(concepts: readonly Concept[]): Concept[] {
 /** Legend of concept categories (plain-English names), for the categories present. */
 export function ConceptLegend({ categories, className }: { categories: ConceptCategory[]; className?: string }) {
   return (
-    <ul className={cn('flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-ink-2', className)} aria-label="Color legend">
+    <ul className={cn('flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-2', className)} aria-label="Color legend">
       {categories.map((c) => (
         <li key={c} className="inline-flex items-center gap-1.5" title={CONCEPT_CATEGORY_INFO[c].description}>
-          <span className="size-2.5 rounded-full" style={{ background: CONCEPT_CATEGORY_INFO[c].color }} aria-hidden />
+          <span className="size-2 rounded-full" style={{ background: CONCEPT_CATEGORY_INFO[c].color }} aria-hidden />
           {CONCEPT_CATEGORY_INFO[c].label}
         </li>
       ))}
@@ -152,7 +153,7 @@ export function ConceptLegend({ categories, className }: { categories: ConceptCa
   )
 }
 
-/** Concept map: concept nodes (emoji + name, size by importance, colored by category with a legend) and labeled relation edges ("is stored in"). Force-directed layout settled up front, then static. */
+/** Concept map: concept nodes (category icon and dot + name, size by importance, with a category legend) and labeled relation edges ("is stored in"). Force-directed layout settled up front, then static. */
 export function ConceptGraph({ map, selectedId, onSelect, className, highlightIds, seenIds }: ConceptGraphProps) {
   const graph = useMemo(() => buildConceptLayout(map), [map])
   const byId = useMemo(() => new Map(map.concepts.map((c) => [c.id, c])), [map.concepts])
@@ -166,7 +167,7 @@ export function ConceptGraph({ map, selectedId, onSelect, className, highlightId
       if (c.analogy) rows.push({ value: 'Like:', label: c.analogy.replace(/^like\s+/i, '') })
       if (c.files.length) rows.push({ value: pluralize(c.files.length, 'file'), label: 'in the code' })
       return {
-        title: `${c.emoji ? `${c.emoji} ` : ''}${c.name}`,
+        title: c.name,
         subtitle: cat.label,
         color: cat.color,
         description: c.summary,
@@ -180,7 +181,7 @@ export function ConceptGraph({ map, selectedId, onSelect, className, highlightId
   if (!graph.nodes.length) {
     return (
       <div className={cn('flex h-full w-full items-center justify-center', className)} data-testid="concept-graph">
-        <EmptyState icon="💡" title="No key ideas yet">
+        <EmptyState icon={<ViewIcon view="concepts" size={20} />} title="No key ideas yet">
           We couldn’t spot the big ideas in this project on our own. Add a Claude key in Settings for a richer concept map.
         </EmptyState>
       </div>
@@ -208,7 +209,7 @@ export function ConceptGraph({ map, selectedId, onSelect, className, highlightId
       focusRank={graph.rank}
       overviewLabel={`Show all ${graph.nodes.length} ideas`}
       footer={
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
           {graph.categories.length >= 2 ? <ConceptLegend categories={graph.categories} /> : <span />}
           <p className="text-xs text-ink-3">
             Bigger cards are more central ideas. Read each arrow as a sentence: idea → phrase → idea.

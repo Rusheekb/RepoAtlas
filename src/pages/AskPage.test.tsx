@@ -70,7 +70,7 @@ describe('AskPage file links', () => {
     expect(chat.current?.cancel).not.toHaveBeenCalled()
   })
 
-  it('once the answer is complete, a file link opens it in Read the Code', async () => {
+  it('once the answer is complete, a file link opens it in Read the code', async () => {
     const user = userEvent.setup()
     renderAsk('done')
     await user.click(screen.getByRole('button', { name: 'src/main.tsx' }))

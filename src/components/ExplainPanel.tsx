@@ -3,6 +3,7 @@ import { ArrowLeft, X } from 'lucide-react'
 import { useLocation } from 'react-router'
 import { IconButton } from '@/components/shell/IconButton'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import { ExplainBody, explainEyebrow, explainTargetKey } from '@/components/shell/explain/bodies'
 import { useMediaQuery } from '@/components/shell/media'
 import type { ExplainTarget } from '@/core/types'
@@ -20,7 +21,7 @@ export function progressKeyFor(target: ExplainTarget): string | null {
 }
 
 const PANEL_CSS = `
-@keyframes atlas-panel-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes atlas-panel-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
 @keyframes atlas-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes atlas-fade { from { opacity: 0; } to { opacity: 1; } }
 `
@@ -123,12 +124,12 @@ export function ExplainPanel() {
   const topBar = (
     <div className="flex h-14 shrink-0 items-center gap-1 border-b border-line px-3">
       {canGoBack ? (
-        <IconButton size="sm" aria-label="Back" title="Back" onClick={back} icon={<ArrowLeft className="size-4" />} />
+        <IconButton size="sm" aria-label="Back" title="Back" onClick={back} icon={<Icon as={ArrowLeft} />} />
       ) : (
         <span className="w-1" aria-hidden />
       )}
-      <p className="min-w-0 flex-1 truncate px-1 text-xs font-semibold tracking-wide text-ink-3 uppercase">{eyebrow}</p>
-      <IconButton size="sm" aria-label="Close explanation" title="Close (Esc)" onClick={close} icon={<X className="size-4" />} />
+      <p className="min-w-0 flex-1 truncate px-1 text-sm text-ink-3">{eyebrow}</p>
+      <IconButton size="sm" aria-label="Close explanation" title="Close (Esc)" onClick={close} icon={<Icon as={X} />} />
     </div>
   )
 
@@ -148,7 +149,7 @@ export function ExplainPanel() {
         data-testid="explain-panel"
         className={cn(
           'fixed top-16 right-0 bottom-0 z-40 flex w-[440px] max-w-[calc(100vw-2rem)] flex-col border-l border-line bg-surface shadow-lg',
-          'motion-safe:animate-[atlas-panel-in_220ms_ease-out]',
+          'motion-safe:animate-[atlas-panel-in_240ms_cubic-bezier(0.22,1,0.36,1)]',
         )}
       >
         <style>{PANEL_CSS}</style>
@@ -161,14 +162,14 @@ export function ExplainPanel() {
   return (
     <div className="fixed inset-0 z-50" data-testid="explain-sheet">
       <style>{PANEL_CSS}</style>
-      <div className="absolute inset-0 bg-black/40 motion-safe:animate-[atlas-fade_200ms_ease-out]" onClick={close} aria-hidden />
+      <div className="absolute inset-0 bg-black/40 motion-safe:animate-[atlas-fade_200ms_cubic-bezier(0.22,1,0.36,1)]" onClick={close} aria-hidden />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={`Explanation: ${eyebrow}`}
         data-testid="explain-panel"
-        className="absolute inset-x-0 bottom-0 flex max-h-[88dvh] flex-col rounded-t-3xl border-t border-line bg-surface shadow-lg motion-safe:animate-[atlas-sheet-in_240ms_ease-out]"
+        className="absolute inset-x-0 bottom-0 flex max-h-[88dvh] flex-col rounded-t-2xl border-t border-line bg-surface shadow-lg motion-safe:animate-[atlas-sheet-in_320ms_cubic-bezier(0.22,1,0.36,1)]"
       >
         <div className="flex justify-center pt-2" aria-hidden>
           <span className="h-1 w-10 rounded-full bg-line-strong" />

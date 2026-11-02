@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
+import { ListChecks } from 'lucide-react'
 import { useHasAiKey, useQuiz } from '@/ai'
 import { useRepoNav } from '@/components/shell/hooks'
 import { EmptyState, Segmented } from '@/components/ui'
+import { Icon } from '@/components/ui/icons'
 import { AiAssist } from '@/components/views/visual/AiAssist'
 import { ViewHeader } from '@/components/views/visual/ViewHeader'
 import { QuizRunner } from '@/components/views/reading/QuizRunner'
@@ -13,6 +15,9 @@ import { useAnalysis } from '@/state/repo'
 import '@/components/views/reading/reading.css'
 
 type Source = 'ai' | 'starter'
+
+/** Quiet inline link: ink text with a hairline underline that darkens on hover. */
+const LINK = 'font-medium text-ink underline decoration-line-strong underline-offset-2 transition-[text-decoration-color] duration-150 ease-atlas hover:decoration-ink'
 
 const HINT = 'A few quick questions to check what you’ve picked up. No pressure: you can try again as often as you like.'
 
@@ -62,8 +67,8 @@ export default function QuizPage() {
   const onFinish = useCallback(() => markSeen(analysis.meta.fullName, `quiz:${source}`), [markSeen, analysis.meta.fullName, source])
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-5 p-4 sm:p-6" data-testid="quiz-page">
-      <ViewHeader emoji={info.emoji} title={info.label} hint={HINT} />
+    <div className="mx-auto w-full max-w-3xl space-y-6 p-4 sm:p-6" data-testid="quiz-page">
+      <ViewHeader view="quiz" title={info.label} hint={HINT} />
 
       <AiAssist
         hasKey={hasKey}
@@ -81,13 +86,13 @@ export default function QuizPage() {
         regenerateLabel="Write a new quiz with Claude"
         busyLabel="Claude is writing your quiz"
         pitch="This starter quiz was put together from how the project is organized. Claude can read the actual code and ask about how it really works."
-        doneNote="Claude wrote a quiz from the actual code."
+        doneNote="Claude wrote this quiz from the actual code"
         promptTask={{ kind: 'quiz' }}
       />
 
       {hasAi && (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-ink-2">{source === 'ai' ? 'Questions written by Claude.' : 'Questions put together from the project’s structure.'}</p>
+          <p className="text-sm text-ink-2">{source === 'ai' ? 'Questions written by Claude' : 'Questions put together from the project’s structure'}</p>
           <Segmented<Source>
             label="Which quiz"
             size="sm"
@@ -97,15 +102,15 @@ export default function QuizPage() {
               setRound((r) => r + 1)
             }}
             options={[
-              { value: 'ai', label: '✨ Claude’s quiz' },
-              { value: 'starter', label: '🧭 Starter quiz' },
+              { value: 'ai', label: 'Claude’s quiz' },
+              { value: 'starter', label: 'Starter quiz' },
             ]}
           />
         </div>
       )}
 
       {questions.length === 0 ? (
-        <EmptyState icon="🎓" title="No questions yet">
+        <EmptyState icon={<Icon as={ListChecks} size={18} />} title="No questions yet">
           We couldn’t find enough in this project to ask about on our own.
           {hasKey ? ' Ask Claude to write a quiz with the button above.' : ' Add a Claude key in Settings and Claude can write one for you.'}
         </EmptyState>
@@ -119,11 +124,11 @@ export default function QuizPage() {
           afterScore={
             <p>
               Want to learn more? Take a{' '}
-              <Link to={href('tours')} className="font-medium text-brand-text underline underline-offset-2">
+              <Link to={href('tours')} className={LINK}>
                 guided tour
               </Link>{' '}
               or{' '}
-              <Link to={href('explore')} className="font-medium text-brand-text underline underline-offset-2">
+              <Link to={href('explore')} className={LINK}>
                 read the code
               </Link>{' '}
               with notes alongside.

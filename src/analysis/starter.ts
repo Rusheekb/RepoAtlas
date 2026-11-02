@@ -14,7 +14,7 @@ import type {
   TourStep,
 } from '@/core/types'
 import { ROOT_MODULE_ID } from '@/core/types'
-import { ROLE_INFO } from '@/core/labels'
+import { ROLE_INFO, VIEW_INFO } from '@/core/labels'
 import { basename } from '@/core/paths'
 import { rankModules } from './learningPath'
 import { familyOf } from './structure/family'
@@ -720,7 +720,7 @@ function beginTour(analysis: StarterInput, contents: Record<string, string>): To
       tourStep(
         f,
         contents,
-        i === 0 ? `Next stop: ${shortName(f.path)}` : `${ROLE_INFO[f.role].emoji} ${shortName(f.path)}`,
+        i === 0 ? `Next stop: ${shortName(f.path)}` : shortName(f.path),
         [
           siblingOf.has(f.path) && parent
             ? `${code(shortName(parent.path))} and this file live in the same folder, which Go treats as one package: they share everything without having to import each other.`
@@ -742,8 +742,8 @@ function beginTour(analysis: StarterInput, contents: Record<string, string>): To
     conceptStep(
       'What you’ve seen',
       order.length > 1
-        ? `You followed the trail from the starting point through ${count(order.length - 1, 'file')}: ${path}. In short, the starting point sets things up and hands the real work to these pieces. Next, open **How It Connects** to see the rest of the project.`
-        : `This project starts in ${code(start.name)} and does most of its work right there. Open **How It Connects** to see the other parts and how they relate.`,
+        ? `You followed the trail from the starting point through ${count(order.length - 1, 'file')}: ${path}. In short, the starting point sets things up and hands the real work to these pieces. Next, open **${VIEW_INFO.map.label}** to see the rest of the project.`
+        : `This project starts in ${code(start.name)} and does most of its work right there. Open **${VIEW_INFO.map.label}** to see the other parts and how they relate.`,
     ),
   )
   return {
@@ -816,8 +816,8 @@ function partsTour(analysis: StarterInput, contents: Record<string, string>): To
     ].filter(Boolean)
     steps.push(
       key
-        ? { title: `${m.emoji} ${safeName(m.name, 40)}`, explanation: parts.join(' '), file: key.path, snippet: snippetFor(key, contents), moduleId: m.id }
-        : conceptStep(`${m.emoji} ${safeName(m.name, 40)}`, parts.join(' '), m.id),
+        ? { title: safeName(m.name, 40), explanation: parts.join(' '), file: key.path, snippet: snippetFor(key, contents), moduleId: m.id }
+        : conceptStep(safeName(m.name, 40), parts.join(' '), m.id),
     )
   }
   const chain = visited.map((m) => `**${escapeMd(m.name)}**`).join(' → ')
@@ -873,7 +873,7 @@ function requestTour(analysis: StarterInput, contents: Record<string, string>): 
     .sort((a, b) => (HANDOFF_PRIORITY[b.role] ?? 0) - (HANDOFF_PRIORITY[a.role] ?? 0) || stepScore(b) - stepScore(a))
     .slice(0, 3)
   for (const f of handoffs) {
-    steps.push(tourStep(f, contents, `${ROLE_INFO[f.role].emoji} ${shortName(f.path)}`, `${code(shortName(routeFile.path))} hands part of the work to this file. ${escapeMdKeepCode(f.summary)} ${roleSentence(f)}`.trim()))
+    steps.push(tourStep(f, contents, shortName(f.path), `${code(shortName(routeFile.path))} hands part of the work to this file. ${escapeMdKeepCode(f.summary)} ${roleSentence(f)}`.trim()))
   }
   const db = analysis.techStack.find((t) => t.category === 'database')
   steps.push(
@@ -919,7 +919,7 @@ function dataTour(analysis: StarterInput, contents: Record<string, string>): Tou
     const step = tourStep(
       f,
       contents,
-      `${ROLE_INFO[f.role].emoji} ${shapes.length > 0 ? shapes.map((s) => s.name).join(', ') : f.name}`,
+      shapes.length > 0 ? shapes.map((s) => s.name).join(', ') : f.name,
       [
         escapeMdKeepCode(f.summary),
         fields.length > 0 ? `Each ${escapeMd(thing)} has details such as ${listJoin(fields.slice(0, 6).map((x) => `**${escapeMd(x)}**`))}.` : '',

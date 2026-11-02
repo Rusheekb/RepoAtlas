@@ -45,11 +45,13 @@ describe('FileTree', () => {
     expect(cart).toHaveAttribute('tabindex', '0')
   })
 
-  it('labels files with their job (entry points get the rocket) and folders with their size', () => {
+  it('labels files with their job (a line icon per role, no emoji) and folders with their size', () => {
     render(<FileTree files={FILES} onSelect={() => {}} isSeen={(p) => p === 'README.md'} />)
     expect(screen.getByRole('treeitem', { name: 'src, folder, 4 files' })).toBeInTheDocument()
     expect(screen.getByRole('treeitem', { name: 'README.md, Documentation, already read' })).toBeInTheDocument()
-    expect(screen.getByRole('treeitem', { name: 'package.json, Settings' })).toHaveTextContent('🎛️')
+    const settings = screen.getByRole('treeitem', { name: 'package.json, Settings' })
+    expect(settings.querySelector('svg[data-icon="config"]')).not.toBeNull()
+    expect(screen.getByRole('tree').textContent).not.toMatch(/\p{Extended_Pictographic}/u)
   })
 
   it('opens and closes folders on click and selects files', async () => {

@@ -43,7 +43,10 @@ export function OutboundLink({
       target="_blank"
       rel="noreferrer noopener"
       title={title}
-      className={cn('inline-flex items-center gap-1 font-medium text-brand-text underline-offset-2 hover:underline', className)}
+      className={cn(
+        'inline-flex items-center gap-1 font-medium text-ink underline decoration-line-strong underline-offset-4 transition-[text-decoration-color] duration-150 ease-atlas hover:decoration-ink-3',
+        className,
+      )}
     >
       {children}
       {icon && <ArrowUpRight className="size-3.5 shrink-0" aria-hidden />}
@@ -52,10 +55,12 @@ export function OutboundLink({
   )
 }
 
-/** A page section with an emoji, a heading, an optional subtitle and optional actions on the right. */
+/**
+ * A page section with a heading, an optional subtitle and optional actions on the right.
+ * (`emoji` is kept for compatibility and is no longer rendered: the interface shows no emoji.)
+ */
 export function PageSection({
   id,
-  emoji,
   title,
   subtitle,
   actions,
@@ -75,15 +80,10 @@ export function PageSection({
     <section id={id} aria-labelledby={headingId} className={cn('scroll-mt-6', className)}>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <h2 id={headingId} className="flex items-center gap-2.5 text-xl font-semibold tracking-tight text-ink">
-            {emoji && (
-              <span className="text-[22px] leading-none" aria-hidden>
-                {emoji}
-              </span>
-            )}
+          <h2 id={headingId} className="text-xl font-medium text-ink">
             {title}
           </h2>
-          {subtitle && <p className="mt-1 max-w-3xl text-[15px] leading-relaxed text-ink-2">{subtitle}</p>}
+          {subtitle && <p className="mt-1 max-w-3xl text-[15px] leading-6 text-ink-2">{subtitle}</p>}
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
@@ -122,38 +122,41 @@ export function Callout({
   }
   return (
     <div className={cn('flex gap-3 rounded-xl border px-4 py-3', tones[tone], className)}>
-      {icon && <div className={cn('mt-0.5 shrink-0 text-base leading-none', iconTones[tone])}>{icon}</div>}
+      {icon && <div className={cn('mt-0.5 shrink-0 leading-none', iconTones[tone])}>{icon}</div>}
       <div className="min-w-0 flex-1 text-sm leading-relaxed text-ink">
-        {title && <p className="font-semibold text-ink">{title}</p>}
+        {title && <p className="font-medium text-ink">{title}</p>}
         {children && <div className={cn(title ? 'mt-0.5 text-ink-2' : 'text-ink')}>{children}</div>}
       </div>
     </div>
   )
 }
 
-/** A big number with a label, e.g. "236 · files". */
+/** A figure with a quiet mono label under a hairline, e.g. "236" over "files". */
 export function StatTile({ value, label, hint, className }: { value: ReactNode; label: ReactNode; hint?: string; className?: string }) {
   return (
-    <div className={cn('min-w-0 rounded-xl border border-line bg-surface-2/60 px-4 py-3', className)} title={hint}>
-      <p className="text-2xl font-semibold tracking-tight text-ink tabular-nums">{value}</p>
-      <p className="mt-0.5 truncate text-xs font-medium text-ink-2">{label}</p>
+    <div className={cn('min-w-0 border-t border-line pt-3', className)} title={hint}>
+      <p className="text-2xl leading-8 font-medium text-ink tabular-nums">{value}</p>
+      <p className="mt-1 truncate text-meta">{label}</p>
     </div>
   )
 }
 
-/** Pill-shaped button used for "Uses …", related terms, example repos and the like. */
+/** A small tag-shaped button used for "Uses …", related terms, filters and the like. */
 export function ChipButton({
   children,
   onClick,
   title,
   className,
   active,
+  size = 'md',
 }: {
   children: ReactNode
   onClick: () => void
   title?: string
   className?: string
   active?: boolean
+  /** `sm` = 24px tall (inside cards), `md` = 28px (default). */
+  size?: 'sm' | 'md'
 }) {
   return (
     <button
@@ -162,7 +165,8 @@ export function ChipButton({
       title={title}
       aria-pressed={active}
       className={cn(
-        'inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] font-medium transition-colors',
+        'inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-md border font-medium whitespace-nowrap transition-colors duration-150 ease-atlas',
+        size === 'sm' ? 'h-6 px-2 text-xs' : 'h-7 px-2.5 text-[13px]',
         active ? 'border-transparent bg-brand text-brand-ink' : 'border-line bg-surface text-ink-2 hover:border-line-strong hover:bg-surface-2 hover:text-ink',
         className,
       )}
@@ -187,7 +191,7 @@ export function splitCode(text: string): { text: string; code: boolean; start: n
   return out
 }
 
-export const INLINE_CODE_CLASS = 'rounded-[5px] border border-line bg-surface-2 px-[0.35em] py-[0.05em] font-mono text-[0.86em] text-ink'
+export const INLINE_CODE_CLASS = 'rounded border border-line bg-surface-2 px-[0.35em] py-[0.05em] font-mono text-[0.86em] text-ink'
 
 /** Plain text where `backticked` bits render as inline code. No links, safe inside buttons. */
 export function RichText({ text, className }: { text: string; className?: string }) {

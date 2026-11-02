@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from 'react'
-import { ArrowRight, Check, ChevronDown, Clock, ExternalLink as ExternalIcon, Info, Scale, Star, X } from 'lucide-react'
+import { Archive, ArrowRight, Braces, Check, ChevronDown, Clock, ExternalLink as ExternalIcon, GitFork, Info, Lock, Scale, Star } from 'lucide-react'
 import { Link } from 'react-router'
 import { AiAnswer } from '@/components/AiAnswer'
 import { GlossaryText } from '@/components/Glossary'
@@ -7,12 +7,14 @@ import { LanguageBar, LayerBar, MiniLayerBar, TechStackDiagram } from '@/compone
 import { fileWeight } from '@/components/graphs/treemapData'
 import { Callout, GitHubMark, OutboundLink, PageSection, RichText, StatTile } from '@/components/shell/bits'
 import { useRepoNav } from '@/components/shell/hooks'
-import { markdownPreview } from '@/components/shell/text'
+import { markdownPreview, stripEmoji } from '@/components/shell/text'
 import { makeReadmeResolver, normalizeCodeRef, safeHttpUrl } from '@/components/shell/urls'
 import { Button, Card, Markdown } from '@/components/ui'
+import { Icon, KindIcon, LayerDot, RoleIcon, ViewIcon } from '@/components/ui/icons'
+import { RouteLine, YouAreHerePin } from '@/components/ui/YouAreHere'
 import { cn } from '@/components/ui/cn'
 import { formatCompact, formatDate, formatNumber, pluralize } from '@/core/format'
-import { LAYER_INFO, PROJECT_KIND_INFO, ROLE_INFO, VIEW_INFO } from '@/core/labels'
+import { LAYER_INFO, PROJECT_KIND_INFO, VIEW_INFO } from '@/core/labels'
 import type { AnalyzedFile, Layer, LearningStep, ModuleInfo, RepoAnalysis } from '@/core/types'
 import { githubFileUrl } from '@/github'
 import { useExplain } from '@/state/explain'
@@ -49,13 +51,17 @@ function sumLayers(files: Record<string, AnalyzedFile>): Partial<Record<Layer, n
   return out
 }
 
+/** One fact in the hero's meta line: a muted icon and plain text, no pill. */
 function Chip({ children, title }: { children: ReactNode; title?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink-2" title={title}>
+    <span className="inline-flex items-center gap-1.5 text-sm text-ink-2 [&>svg]:text-ink-3" title={title}>
       {children}
     </span>
   )
 }
+
+/** Links in the content: ink with a quiet underline. */
+const LINK_CLASS = 'text-ink underline decoration-line-strong underline-offset-4 transition-[text-decoration-color] duration-150 ease-atlas hover:decoration-ink-3' 
 
 // ─── Hero ───────────────────────────────────────────────────────────────────
 
@@ -68,62 +74,69 @@ function Hero({ analysis }: { analysis: RepoAnalysis }) {
   const license = meta.license === 'NOASSERTION' ? 'Custom license' : meta.license ? `${meta.license} license` : null
 
   return (
-    <header className="rounded-3xl border border-line bg-surface p-6 shadow-sm sm:p-8" data-testid="overview-hero">
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-        <span className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-brand-soft text-4xl leading-none" aria-hidden>
-          {kind.emoji || info.emoji}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-brand-text">{kind.label || info.label}</p>
-          <h1 tabIndex={-1} className="mt-1 text-3xl font-semibold tracking-tight break-words text-ink outline-none">
-            <span className="font-normal text-ink-3">{meta.owner} / </span>
-            {meta.repo}
-          </h1>
-          <p className="mt-2 max-w-3xl text-[15px] leading-relaxed text-ink-2">
-            <GlossaryText text={kind.description || info.description} />
-          </p>
-          {meta.description && (
-            <blockquote className="mt-4 max-w-3xl border-l-[3px] border-brand pl-4">
-              <p className="text-[15px] leading-relaxed text-ink">“{meta.description}”</p>
-              <footer className="mt-1 text-xs text-ink-3">How the authors describe it on GitHub</footer>
-            </blockquote>
-          )}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            {language && <Chip title="The programming language most of the code is written in">🗣️ Mostly {language}</Chip>}
-            {license && (
-              <Chip title="The rules for using and sharing this code">
-                <Scale className="size-3.5" aria-hidden /> {license}
-              </Chip>
-            )}
-            <Chip title={`${formatNumber(meta.stars)} people starred this project on GitHub`}>
-              <Star className="size-3.5 text-warn-text" aria-hidden /> {formatCompact(meta.stars)} stars
-            </Chip>
-            {meta.pushedAt && (
-              <Chip title="When someone last changed the code">
-                <Clock className="size-3.5" aria-hidden /> Updated {formatDate(meta.pushedAt)}
-              </Chip>
-            )}
-            {meta.archived && <Chip title="The authors have stopped working on it">📦 Archived</Chip>}
-            {meta.isFork && <Chip title="A copy of another project, possibly with changes">🍴 A copy (fork)</Chip>}
-            {meta.isPrivate && <Chip>🔒 Private</Chip>}
-            <a
-              href={githubUrl}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium text-brand-text hover:underline"
-            >
-              <GitHubMark className="size-3.5" /> View on GitHub
-              <span className="sr-only">(opens in a new tab)</span>
-            </a>
-            {homepage && (
-              <OutboundLink href={homepage} className="px-1 text-xs">
-                Project website
-              </OutboundLink>
-            )}
-          </div>
-        </div>
+    <header className="rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8" data-testid="overview-hero">
+      <p className="inline-flex items-center gap-2 text-sm text-ink-2">
+        <KindIcon kind={kind.id} className="text-ink-3" />
+        {kind.label || info.label}
+      </p>
+      <h1 tabIndex={-1} className="mt-3 text-page-title break-words text-ink outline-none">
+        <span className="text-ink-3">{meta.owner} / </span>
+        {meta.repo}
+      </h1>
+      <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-ink-2">
+        <GlossaryText text={kind.description || info.description} />
+      </p>
+      {meta.description && (
+        <blockquote className="mt-4 max-w-3xl border-l-2 border-line-strong pl-4">
+          <p className="text-[15px] leading-relaxed text-ink">“{meta.description}”</p>
+          <footer className="mt-1 text-xs text-ink-3">How the authors describe it on GitHub</footer>
+        </blockquote>
+      )}
+      <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2">
+        {language && (
+          <Chip title="The programming language most of the code is written in">
+            <Icon as={Braces} /> Mostly {language}
+          </Chip>
+        )}
+        {license && (
+          <Chip title="The rules for using and sharing this code">
+            <Icon as={Scale} /> {license}
+          </Chip>
+        )}
+        <Chip title={`${formatNumber(meta.stars)} people starred this project on GitHub`}>
+          <Icon as={Star} /> <span className="tabular-nums">{formatCompact(meta.stars)}</span> stars
+        </Chip>
+        {meta.pushedAt && (
+          <Chip title="When someone last changed the code">
+            <Icon as={Clock} /> Updated {formatDate(meta.pushedAt)}
+          </Chip>
+        )}
+        {meta.archived && (
+          <Chip title="The authors have stopped working on it">
+            <Icon as={Archive} /> Archived
+          </Chip>
+        )}
+        {meta.isFork && (
+          <Chip title="A copy of another project, possibly with changes">
+            <Icon as={GitFork} /> A copy (fork)
+          </Chip>
+        )}
+        {meta.isPrivate && (
+          <Chip>
+            <Icon as={Lock} /> Private
+          </Chip>
+        )}
+        <a href={githubUrl} target="_blank" rel="noreferrer noopener" className={cn('inline-flex items-center gap-1.5 text-sm font-medium', LINK_CLASS)}>
+          <GitHubMark className="text-ink-2" /> View on GitHub
+          <span className="sr-only">(opens in a new tab)</span>
+        </a>
+        {homepage && (
+          <OutboundLink href={homepage} className="text-sm">
+            Project website
+          </OutboundLink>
+        )}
       </div>
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="mt-8 grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile value={formatNumber(stats.totalFiles)} label="files" hint="Every document in the project, code or not" />
         <StatTile
           value={formatCompact(stats.totalLines)}
@@ -132,41 +145,28 @@ function Hero({ analysis }: { analysis: RepoAnalysis }) {
         />
         <StatTile value={formatNumber(analysis.modules.length)} label="main parts" hint="Groups of files that work together" />
         <StatTile value={formatNumber(analysis.techStack.length)} label="tools & toolkits" hint="Languages, frameworks and helpers we recognized" />
-        <StatTile
-          value={formatNumber(stats.testFiles)}
-          label="test files"
-          hint="Automatic checks that make sure the code keeps working"
-          className="max-lg:col-span-2 max-sm:col-span-2 sm:max-lg:col-span-1"
-        />
+        <StatTile value={formatNumber(stats.testFiles)} label="test files" hint="Automatic checks that make sure the code keeps working" />
       </div>
     </header>
   )
 }
 
+/** A one-line note on how to read the page, until the reader dismisses it. */
 function WelcomeNote() {
   const seenIntro = useSettings((s) => s.seenIntro)
   const set = useSettings((s) => s.set)
   if (seenIntro) return null
   return (
-    <div className="flex items-start gap-3 rounded-2xl border border-transparent bg-brand-soft px-5 py-4" role="note">
-      <span className="text-2xl leading-none" aria-hidden>
-        👋
-      </span>
-      <div className="min-w-0 flex-1 text-sm leading-relaxed text-ink">
-        <p className="font-semibold">Welcome! This page is the big picture.</p>
-        <p className="mt-0.5 text-ink-2">
-          Follow <span className="font-medium text-ink">your learning path</span> one step at a time. Words with a{' '}
-          <span className="underline decoration-ink-3 decoration-dotted underline-offset-[3px]">dotted underline</span> explain themselves when you point
-          at them, and anything you click opens a plain-English explanation.
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => set({ seenIntro: true })}
-        className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-brand-text hover:bg-surface/60"
-      >
-        <X className="size-4" aria-hidden /> Got it
-      </button>
+    <div className="flex items-start gap-3 rounded-xl border border-line bg-surface-2 py-2 pr-2 pl-4" role="note">
+      <Icon as={Info} className="mt-2 text-ink-3" />
+      <p className="min-w-0 flex-1 py-1.5 text-sm leading-5 text-ink-2">
+        Start with <span className="font-medium text-ink">your learning path</span>. Words with a{' '}
+        <span className="underline decoration-ink-3 decoration-dotted decoration-[1.5px] underline-offset-4">dotted underline</span> explain themselves, and
+        anything you click opens a plain-English explanation.
+      </p>
+      <Button variant="ghost" size="sm" className="shrink-0" onClick={() => set({ seenIntro: true })}>
+        Got it
+      </Button>
     </div>
   )
 }
@@ -212,15 +212,17 @@ function LearningPath({ analysis, onReadme, onBigPicture }: { analysis: RepoAnal
 
   if (!steps.length) return null
   const percent = Math.round((doneCount / steps.length) * 100)
+  // "You are here": the first step not done yet. The route behind it is travelled (accent), the rest is still ahead.
+  const currentIndex = steps.findIndex((s) => !isDone(s))
 
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-line px-5 py-4">
-        <div className="flex items-baseline justify-between gap-3 text-sm">
-          <p className="font-semibold text-ink">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-sm font-medium text-ink tabular-nums">
             {doneCount} of {steps.length} steps done
           </p>
-          <p className="text-xs text-ink-3">{minutes > 0 ? `About ${minutes} min to go` : 'All done. Well done!'}</p>
+          <p className="text-meta">{minutes > 0 ? `About ${minutes} min to go` : 'All steps done'}</p>
         </div>
         <div
           role="progressbar"
@@ -228,40 +230,53 @@ function LearningPath({ analysis, onReadme, onBigPicture }: { analysis: RepoAnal
           aria-valuemin={0}
           aria-valuemax={steps.length}
           aria-valuenow={doneCount}
-          className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3"
+          className="mt-3 h-1 overflow-hidden rounded-full bg-surface-3"
         >
-          <div className="h-full rounded-full bg-brand transition-[width] duration-500" style={{ width: `${percent}%` }} />
+          <div className="h-full origin-left rounded-full bg-ink transition-transform duration-500 ease-atlas" style={{ transform: `scaleX(${percent / 100})` }} />
         </div>
       </div>
       <ol className="p-2" aria-label="Learning path steps">
         {steps.map((step, i) => {
           const done = isDone(step)
+          const current = i === currentIndex
+          const last = i === steps.length - 1
           return (
-            <li key={step.id}>
+            <li key={step.id} className="relative">
               <button
                 type="button"
                 onClick={() => follow(step)}
-                className="group flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-surface-2"
+                aria-current={current ? 'step' : undefined}
+                className="group flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors duration-150 ease-atlas hover:bg-surface-2"
               >
-                <span
-                  className={cn(
-                    'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold tabular-nums',
-                    done ? 'border-transparent bg-brand text-brand-ink' : 'border-line-strong bg-surface text-ink-2 group-hover:border-brand',
+                {/* The marker column: a check for done steps, the pin for the current one, a numbered stop for the rest. */}
+                <span className="flex size-6 shrink-0 items-center justify-center" aria-hidden>
+                  {current ? (
+                    <YouAreHerePin size={20} />
+                  ) : done ? (
+                    <Icon as={Check} className="text-ink-3" />
+                  ) : (
+                    <span className="flex size-6 items-center justify-center rounded-full border border-line-strong bg-surface font-mono text-xs text-ink-2 tabular-nums">
+                      {i + 1}
+                    </span>
                   )}
-                  aria-hidden
-                >
-                  {done ? <Check className="size-4" /> : i + 1}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className={cn('block text-sm font-semibold', done ? 'text-ink-2' : 'text-ink group-hover:text-brand-text')}>
-                    {step.title}
-                    <span className="sr-only">{done ? ' (done)' : ''}</span>
+                  <span className={cn('block text-sm leading-6 font-medium', done ? 'text-ink-3' : 'text-ink')}>
+                    {stripEmoji(step.title)}
+                    <span className="sr-only">{done ? ' (done)' : current ? ' (you are here)' : ''}</span>
                   </span>
-                  <RichText text={step.description} className="mt-0.5 line-clamp-3 block text-[13px] leading-snug text-ink-2" />
-                  <span className="mt-1 block text-[11px] font-medium text-ink-3">About {step.minutes} min</span>
+                  <RichText text={stripEmoji(step.description)} className={cn('mt-0.5 line-clamp-3 block text-[13px] leading-5', done ? 'text-ink-3' : 'text-ink-2')} />
+                  <span className="mt-1 block text-meta">About {step.minutes} min</span>
                 </span>
-                <ArrowRight className="mt-1 size-4 shrink-0 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+                <Icon as={ArrowRight} className="mt-1 text-ink-3 opacity-0 transition-opacity duration-150 ease-atlas group-hover:opacity-100" />
               </button>
+              {/* The route to the next stop: from under this marker to just above the next one. */}
+              {!last && (
+                <RouteLine
+                  travelled={currentIndex === -1 || i < currentIndex}
+                  className="pointer-events-none absolute top-10 -bottom-2 left-6 -translate-x-1/2"
+                />
+              )}
             </li>
           )
         })}
@@ -273,30 +288,31 @@ function LearningPath({ analysis, onReadme, onBigPicture }: { analysis: RepoAnal
 // ─── Main parts ─────────────────────────────────────────────────────────────
 
 function ModuleCard({ mod, seen, onOpen }: { mod: ModuleInfo; seen: boolean; onOpen: () => void }) {
+  const kindLabel = LAYER_INFO[mod.layer].label
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="group flex h-full w-full flex-col rounded-2xl border border-line bg-surface p-5 text-left shadow-sm transition hover:-translate-y-px hover:border-line-strong hover:shadow-md motion-reduce:hover:translate-y-0"
+      className="group flex h-full w-full flex-col rounded-2xl border border-line bg-surface p-5 text-left shadow-sm transition-colors duration-150 ease-atlas hover:border-line-strong"
     >
       <span className="flex w-full items-start gap-3">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-2xl leading-none" aria-hidden>
-          {mod.emoji}
-        </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] font-semibold text-ink group-hover:text-brand-text">{mod.name}</span>
-          <span className="block truncate text-xs text-ink-3">{mod.role && mod.role !== mod.name ? mod.role : LAYER_INFO[mod.layer].label}</span>
+          <span className="flex min-w-0 items-center gap-2" title={kindLabel}>
+            <LayerDot layer={mod.layer} />
+            <span className="truncate text-[15px] leading-6 font-medium text-ink">{mod.name}</span>
+          </span>
+          <span className="block truncate pl-4 text-xs leading-4 text-ink-3">{mod.role && mod.role !== mod.name ? mod.role : kindLabel}</span>
         </span>
         {seen && (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-good-text">
-            <Check className="size-3" aria-hidden /> Seen
+          <span className="inline-flex shrink-0 items-center gap-1 pt-1 text-xs leading-4 text-ink-3">
+            <Icon as={Check} size={14} /> Seen
           </span>
         )}
       </span>
       <RichText text={mod.description} className="mt-3 line-clamp-3 block text-sm leading-relaxed text-ink-2" />
       <span className="mt-auto block w-full pt-4">
         <MiniLayerBar breakdown={mod.layerBreakdown} />
-        <span className="mt-2 flex items-center justify-between gap-2 text-xs text-ink-3">
+        <span className="mt-2 flex items-center justify-between gap-2 text-meta">
           <span>
             {pluralize(mod.fileCount, 'file')} · {formatCompact(mod.lines)} lines
           </span>
@@ -318,12 +334,11 @@ function MainParts({ analysis }: { analysis: RepoAnalysis }) {
   return (
     <PageSection
       id="main-parts"
-      emoji="🧩"
       title="The main parts"
       subtitle={`The project is split into ${pluralize(modules.length, 'main part')}. Click one to see what it does and what it works with.`}
       actions={
-        <Link to={href('map')} className="inline-flex items-center gap-1 text-sm font-semibold text-brand-text hover:underline">
-          See how they connect <ArrowRight className="size-4" aria-hidden />
+        <Link to={href('map')} className="inline-flex items-center gap-1 text-sm font-medium text-ink underline-offset-4 hover:underline">
+          See how they connect <Icon as={ArrowRight} />
         </Link>
       }
     >
@@ -347,6 +362,10 @@ function MainParts({ analysis }: { analysis: RepoAnalysis }) {
 
 // ─── Where it starts ────────────────────────────────────────────────────────
 
+/** Rows inside a card with 8px padding: 16 − 8 = 8px radius (nested radius). */
+const ROW_LINK_CLASS = 'group flex items-start gap-3 rounded-lg px-3 py-3 transition-colors duration-150 ease-atlas hover:bg-surface-2'
+const ROW_ARROW_CLASS = 'mt-0.5 text-ink-3 opacity-0 transition-opacity duration-150 ease-atlas group-hover:opacity-100'
+
 function WhereItStarts({ analysis }: { analysis: RepoAnalysis }) {
   const { href } = useRepoNav()
   const entries = analysis.entryPoints.map((p) => analysis.files[p]).filter(Boolean).slice(0, 5)
@@ -357,28 +376,25 @@ function WhereItStarts({ analysis }: { analysis: RepoAnalysis }) {
   return (
     <PageSection
       id="where-it-starts"
-      emoji="🚀"
       title="Where it starts"
       subtitle="A program begins running at one particular file, like the first domino in a row. These are our best guesses, with the reason for each."
     >
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-2">
-          <h3 className="px-3 pt-3 pb-1 text-sm font-semibold text-ink">Starting points</h3>
+          <h3 className="px-3 pt-3 pb-1 text-sm font-medium text-ink">Starting points</h3>
           {entries.length ? (
             <ul>
               {entries.map((f) => (
                 <li key={f.path}>
-                  <Link to={href('explore', { file: f.path })} className="group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-surface-2">
-                    <span className="mt-0.5 text-lg leading-none" aria-hidden>
-                      {ROLE_INFO.entry.emoji}
-                    </span>
+                  <Link to={href('explore', { file: f.path })} className={ROW_LINK_CLASS}>
+                    <RoleIcon role="entry" className="mt-0.5 text-ink-3" />
                     <span className="min-w-0 flex-1">
-                      <span className="block font-mono text-[13px] font-medium break-all text-ink group-hover:text-brand-text">{f.path}</span>
-                      <span className="mt-0.5 block text-[13px] leading-snug text-ink-2">
+                      <span className="block font-mono text-[13px] leading-5 break-all text-ink">{f.path}</span>
+                      <span className="mt-0.5 block text-[13px] leading-5 text-ink-2">
                         <RichText text={f.entryReason || f.summary} />
                       </span>
                     </span>
-                    <ArrowRight className="mt-1 size-4 shrink-0 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+                    <Icon as={ArrowRight} className={ROW_ARROW_CLASS} />
                   </Link>
                 </li>
               ))}
@@ -389,19 +405,17 @@ function WhereItStarts({ analysis }: { analysis: RepoAnalysis }) {
         </Card>
         {hubs.length > 0 && (
           <Card className="p-2">
-            <h3 className="px-3 pt-3 pb-1 text-sm font-semibold text-ink">Files everything else leans on</h3>
+            <h3 className="px-3 pt-3 pb-1 text-sm font-medium text-ink">Files everything else leans on</h3>
             <ul>
               {hubs.map((f) => (
                 <li key={f.path}>
-                  <Link to={href('explore', { file: f.path })} className="group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-surface-2">
-                    <span className="mt-0.5 text-lg leading-none" aria-hidden>
-                      {(ROLE_INFO[f.role] ?? ROLE_INFO.other).emoji}
-                    </span>
+                  <Link to={href('explore', { file: f.path })} className={ROW_LINK_CLASS}>
+                    <RoleIcon role={f.role} className="mt-0.5 text-ink-3" />
                     <span className="min-w-0 flex-1">
-                      <span className="block font-mono text-[13px] font-medium break-all text-ink group-hover:text-brand-text">{f.path}</span>
-                      <span className="mt-0.5 block text-[13px] leading-snug text-ink-2">Used by {pluralize(f.importedBy.length, 'other file')}</span>
+                      <span className="block font-mono text-[13px] leading-5 break-all text-ink">{f.path}</span>
+                      <span className="mt-0.5 block text-[13px] leading-5 text-ink-2 tabular-nums">Used by {pluralize(f.importedBy.length, 'other file')}</span>
                     </span>
-                    <ArrowRight className="mt-1 size-4 shrink-0 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+                    <Icon as={ArrowRight} className={ROW_ARROW_CLASS} />
                   </Link>
                 </li>
               ))}
@@ -429,7 +443,7 @@ function Readme({ analysis, open, onToggle }: { analysis: RepoAnalysis; open: bo
   const collapsible = preview.truncated
 
   return (
-    <PageSection id="readme" emoji="📖" title="The welcome note" subtitle={<>What the authors wrote to introduce their project, from <code className="font-mono text-[13px]">{readme.path}</code>.</>}>
+    <PageSection id="readme" title="The welcome note" subtitle={<>What the authors wrote to introduce their project, from <code className="font-mono text-[13px]">{readme.path}</code></>}>
       <Card className="overflow-hidden">
         <div id={contentId} className="relative px-6 py-6 sm:px-8">
           <Markdown trusted resolveUrl={resolveUrl} isCodeLink={links.isCodeLink} onCodeClick={links.onCodeClick}>
@@ -437,7 +451,7 @@ function Readme({ analysis, open, onToggle }: { analysis: RepoAnalysis; open: bo
           </Markdown>
           {collapsible && !open && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-linear-to-t from-surface to-transparent" aria-hidden />}
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3 sm:px-7">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-3 sm:px-5">
           {collapsible ? (
             <Button
               variant="ghost"
@@ -445,7 +459,7 @@ function Readme({ analysis, open, onToggle }: { analysis: RepoAnalysis; open: bo
               onClick={onToggle}
               aria-expanded={open}
               aria-controls={contentId}
-              iconRight={<ChevronDown className={cn('size-4 transition-transform', open && 'rotate-180')} aria-hidden />}
+              iconRight={<Icon as={ChevronDown} className={cn('transition-transform duration-150 ease-atlas', open && 'rotate-180')} />}
             >
               {open ? 'Show less' : 'Read the whole note'}
             </Button>
@@ -456,9 +470,9 @@ function Readme({ analysis, open, onToggle }: { analysis: RepoAnalysis; open: bo
             href={githubFileUrl(analysis.meta.owner, analysis.meta.repo, analysis.commitSha, readme.path)}
             target="_blank"
             rel="noreferrer noopener"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-2 hover:text-ink hover:underline"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-ink-2 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
           >
-            <ExternalIcon className="size-3.5" aria-hidden /> Open on GitHub
+            <Icon as={ExternalIcon} size={14} /> Open on GitHub
             <span className="sr-only">(opens in a new tab)</span>
           </a>
         </div>
@@ -473,17 +487,17 @@ function NextStep() {
   return (
     <Link
       to={href('map')}
-      className="group flex items-center gap-4 rounded-2xl border border-line bg-surface p-5 shadow-sm transition hover:border-line-strong hover:shadow-md"
+      className="group flex items-center gap-4 rounded-2xl border border-line bg-surface p-5 shadow-sm transition-colors duration-150 ease-atlas hover:border-line-strong"
     >
-      <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-2xl leading-none" aria-hidden>
-        {info.emoji}
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-2" aria-hidden>
+        <ViewIcon view="map" size={18} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-xs font-semibold tracking-wide text-ink-3 uppercase">Ready for the next step?</span>
-        <span className="block text-base font-semibold text-ink group-hover:text-brand-text">{info.label}</span>
+        <span className="block text-xs leading-4 text-ink-3">Next step</span>
+        <span className="mt-0.5 block text-base font-medium text-ink">{info.label}</span>
         <span className="block text-sm text-ink-2">{info.description}</span>
       </span>
-      <ArrowRight className="size-5 shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-brand-text" aria-hidden />
+      <Icon as={ArrowRight} size={18} className="text-ink-3 transition-[color,transform] duration-150 ease-atlas group-hover:translate-x-0.5 group-hover:text-ink" />
     </Link>
   )
 }
@@ -497,6 +511,8 @@ export default function OverviewPage() {
   const links = useCodeLinks(analysis)
   const [readmeOpen, setReadmeOpen] = useState(false)
   const layers = useMemo(() => sumLayers(analysis.files), [analysis.files])
+  // The generated overview lists parts with their emoji; the interface shows none.
+  const overview = useMemo(() => stripEmoji(analysis.overview), [analysis.overview])
 
   const scrollTo = (id: string) => {
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -520,10 +536,10 @@ export default function OverviewPage() {
       </div>
 
       <div className="grid items-start gap-x-8 gap-y-12 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <PageSection id="plain-english" emoji="💬" title="In plain English" subtitle="What this project is and how it’s put together, written for humans.">
+        <PageSection id="plain-english" title="In plain English" subtitle="What this project is and how it’s put together, written for humans">
           <Card className="px-6 py-6 sm:px-8 sm:py-7">
             <Markdown isCodeLink={links.isCodeLink} onCodeClick={links.onCodeClick}>
-              {analysis.overview}
+              {overview}
             </Markdown>
           </Card>
           <AiAnswer
@@ -535,29 +551,28 @@ export default function OverviewPage() {
           />
         </PageSection>
 
-        <PageSection id="learning-path" emoji="🧭" title="Your learning path" subtitle="A suggested order. Each step ticks off as you go.">
+        <PageSection id="learning-path" title="Your learning path" subtitle="A suggested order. Each step ticks off as you go.">
           <LearningPath analysis={analysis} onReadme={showReadme} onBigPicture={() => scrollTo('plain-english')} />
         </PageSection>
       </div>
 
       <PageSection
         id="built-with"
-        emoji="🧰"
         title="What it’s built with"
         subtitle="The languages, toolkits and helpers this project relies on, from what people see down to the tools behind the scenes. Click any of them to learn what it is."
       >
         <TechStackDiagram tech={analysis.techStack} onSelect={(id) => open({ type: 'tech', id })} selectedId={target?.type === 'tech' ? target.id : null} />
       </PageSection>
 
-      <PageSection id="made-of" emoji="🎨" title="What the code is made of" subtitle="The same colors are used on every map in RepoAtlas, so you can always tell what kind of code you’re looking at.">
+      <PageSection id="made-of" title="What the code is made of" subtitle="The same colors are used on every map in RepoAtlas, so you can always tell what kind of code you’re looking at">
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="p-5 sm:p-6">
-            <h3 className="text-sm font-semibold text-ink">By kind of code</h3>
+            <h3 className="text-sm font-medium text-ink">By kind of code</h3>
             <p className="mt-0.5 mb-4 text-xs text-ink-3">Measured in lines of code</p>
             <LayerBar breakdown={layers} />
           </Card>
           <Card className="p-5 sm:p-6">
-            <h3 className="text-sm font-semibold text-ink">By programming language</h3>
+            <h3 className="text-sm font-medium text-ink">By programming language</h3>
             <p className="mt-0.5 mb-4 text-xs text-ink-3">Measured by file size</p>
             <LanguageBar languages={analysis.languages} />
           </Card>

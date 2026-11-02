@@ -677,7 +677,7 @@ export function buildModules(files: AnalyzedFile[], options: BuildModulesOptions
       if (code.length >= 5 || (code.length >= 3 && codeLines >= nonTestLines * 0.3)) {
         name = options.projectName ? safeName(options.projectName, 40) : 'Main code'
         roleLabel = 'Main code (top level)'
-        description = `The project's main code sits right at the top level, next to its setup files. ${describeComposition(mfiles, lines, languages)}`
+        description = `The project’s main code sits right at the top level, next to its setup files. ${describeComposition(mfiles, lines, languages)}`
         emoji = '🏠'
       } else {
         roleLabel = 'Project setup files'
@@ -697,7 +697,7 @@ export function buildModules(files: AnalyzedFile[], options: BuildModulesOptions
         const generated = generatedDescription(mfiles, role, layer, keyFiles)
         if (generated.specific) extra.push(generated.text)
       }
-      if (m.isPackage && packageCount > 1) extra.push(`It's one of ${packageCount} separate packages kept together in this repository.`)
+      if (m.isPackage && packageCount > 1) extra.push(`It’s one of ${packageCount} separate packages kept together in this repository.`)
       const merged = m.subtrees.filter((s) => s.path !== m.path).map((s) => basename(s.path))
       if (m.direct && merged.length > 0) {
         const shown = merged.slice(0, 3).map((n) => `\`${safeName(n, 30)}\``)

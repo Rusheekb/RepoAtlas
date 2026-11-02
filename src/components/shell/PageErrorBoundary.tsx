@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { RotateCcw, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { Icon } from '@/components/ui/icons'
 
 interface Props {
   /** When this changes (e.g. the route), a crashed page gets another chance. */
@@ -37,14 +38,14 @@ export class PageErrorBoundary extends Component<Props, State> {
     return (
       <div className="flex flex-1 items-center justify-center px-4 py-16">
         <div className="max-w-md text-center" role="alert">
-          <p className="text-4xl" aria-hidden>
-            🧩
-          </p>
-          <h2 className="mt-4 text-xl font-semibold text-ink">This view hit a snag</h2>
+          <span className="mx-auto flex size-10 items-center justify-center rounded-xl bg-surface-2 text-ink-2">
+            <Icon as={TriangleAlert} size={18} />
+          </span>
+          <h2 className="mt-4 text-xl font-medium text-ink">This view hit a snag</h2>
           <p className="mt-2 text-sm leading-relaxed text-ink-2">
             Part of the page couldn’t be drawn for this project. The other views should still work. Pick one from the menu, or try this one again.
           </p>
-          <Button className="mt-5" icon={<RotateCcw className="size-4" aria-hidden />} onClick={() => this.setState({ error: null })}>
+          <Button className="mt-6" icon={<Icon as={RotateCcw} />} onClick={() => this.setState({ error: null })}>
             Try again
           </Button>
         </div>

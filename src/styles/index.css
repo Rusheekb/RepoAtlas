@@ -1,44 +1,59 @@
 @import "tailwindcss";
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/newsreader";
 @import "@fontsource-variable/jetbrains-mono";
 
 /* Dark mode is driven by data-theme on <html> (resolved from the user's setting). */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /*
- * Design tokens. Components use the semantic utilities (bg-canvas, text-ink, border-line …)
- * so both themes switch in one place. Layer colors are the validated categorical palette
- * (fixed order, light + dark steps) and are used for every "kind of code" encoding.
- * Documentation (indigo) and Build & deploy (brown) were re-picked so no two layers look alike, even tinted on the
- * code map: the set passes the palette validator in both modes, and every pair is at least as far apart as the
- * palette's own closest anchors (orange/magenta in light, orange/yellow in dark). Layer identity is never color
- * alone: legends, direct labels and tooltips name it.
+ * Design tokens — "Field atlas" direction (unslop pass; unslop by Damir Sokolovsky, @heydamir, CC BY 4.0).
+ *
+ *  - Neutrals: one warm-grey "map paper" ramp. Surfaces, borders and text all come from it; three text roles.
+ *  - Primary actions use the ink itself (ink fill, paper text) — quiet chrome.
+ *  - One accent, "survey red", used rarely: the "you are here" pin, the route line, the selected item, focus.
+ *  - The maps carry the colour: layer colours are the validated categorical palette (fixed order, light + dark
+ *    steps) used for every "kind of code" encoding, and never alone (legends and labels name them).
+ *
+ * Legacy names: `brand*` now means the ink primary (bg-brand = ink fill, text-brand-text = ink); the accent is
+ * `accent*`. Components should use the semantic utilities so both themes switch in one place.
  */
 :root {
   color-scheme: light;
-  --canvas: #f6f5f2;
-  --surface: #ffffff;
-  --surface-2: #f1f0ec;
-  --surface-3: #e8e6e0;
-  --line: #e2e0d9;
-  --line-strong: #cfccc3;
-  /* Graph lines and arrowheads: at least 3:1 on the surface, so "A uses B" stays visible (WCAG 1.4.11). */
-  --edge: #8b887f;
-  --ink: #1a1a19;
-  --ink-2: #52514e;
-  /* Secondary text: at least 4.5:1 on canvas, surface-2 and brand-soft (4.7:1 on surface-3). */
-  --ink-3: #66645e;
-  --brand: #4338ca;
-  --brand-hover: #3730a3;
-  --brand-soft: #eef0ff;
-  --brand-ink: #ffffff;
-  --brand-text: #3b34b5;
-  --focus: #4338ca;
-  --good: #0ca30c;
-  --good-text: #006300;
-  --warn: #fab219;
+  --canvas: #f7f5f0;
+  --surface: #fdfcf9;
+  --surface-2: #f1eee7;
+  --surface-3: #e8e3d9;
+  /* Hairlines: the ink at low opacity. */
+  --line: rgb(31 27 22 / 0.1);
+  --line-strong: rgb(31 27 22 / 0.18);
+  /* Graph lines and arrowheads: at least 3:1 on the surface (WCAG 1.4.11). */
+  --edge: #857d71;
+  --ink: #1f1b16;
+  --ink-2: #5e554a;
+  /* Muted text: at least 4.5:1 on canvas, surface and surface-2. */
+  --ink-3: #695f53;
+
+  /* Primary = ink. */
+  --brand: #1f1b16;
+  --brand-hover: #3a332b;
+  --brand-soft: #ece7dd;
+  --brand-ink: #fdfcf9;
+  --brand-text: #1f1b16;
+
+  /* Accent = survey red (pin, route, selection, focus). */
+  --accent: #b3311c;
+  --accent-hover: #9a2a17;
+  --accent-ink: #ffffff;
+  --accent-text: #a52d1a;
+  --accent-soft: #f7e7e2;
+  --focus: #b3311c;
+
+  --good: #16a34a;
+  --good-text: #15803d;
+  --warn: #d4a017;
   --warn-text: #8a5a00;
-  --bad: #d03b3b;
+  --bad: #dc2626;
   --bad-text: #b42323;
 
   --layer-ui: #2a78d6;
@@ -51,35 +66,45 @@
   --layer-infra: #9d6300;
   --layer-other: #9b9a94;
 
-  --shadow-sm: 0 1px 2px rgb(20 20 19 / 0.06), 0 1px 1px rgb(20 20 19 / 0.04);
-  --shadow-md: 0 4px 12px rgb(20 20 19 / 0.08), 0 1px 3px rgb(20 20 19 / 0.06);
-  --shadow-lg: 0 16px 40px rgb(20 20 19 / 0.14), 0 2px 8px rgb(20 20 19 / 0.08);
+  /* Light depth: neutral, soft, small. */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 16px 40px rgb(0 0 0 / 0.1), 0 2px 8px rgb(0 0 0 / 0.05);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #121211;
-  --surface: #1a1a19;
-  --surface-2: #222220;
-  --surface-3: #2c2c2a;
-  --line: #31312e;
-  --line-strong: #44443f;
-  --edge: #7d7c75;
-  --ink: #f0efec;
-  --ink-2: #c3c2b7;
-  --ink-3: #9a998f;
-  --brand: #8b8cf6;
-  --brand-hover: #a5a6fa;
-  --brand-soft: #24244a;
-  --brand-ink: #11112a;
-  --brand-text: #b4b5fb;
-  --focus: #a5a6fa;
-  --good: #0ca30c;
-  --good-text: #5fd35f;
-  --warn: #fab219;
-  --warn-text: #fac65a;
-  --bad: #d03b3b;
-  --bad-text: #f08080;
+  --canvas: #161513;
+  --surface: #1c1a18;
+  --surface-2: #262421;
+  --surface-3: #2f2c28;
+  --line: rgb(239 233 222 / 0.09);
+  --line-strong: rgb(239 233 222 / 0.16);
+  --edge: #8d867b;
+  --ink: #efe9de;
+  --ink-2: #b0a99d;
+  --ink-3: #9c958a;
+
+  /* Primary on dark: an off-white from the ramp with dark text. */
+  --brand: #efe9de;
+  --brand-hover: #ffffff;
+  --brand-soft: #2b2824;
+  --brand-ink: #161513;
+  --brand-text: #efe9de;
+
+  --accent: #f07a5f;
+  --accent-hover: #f48f78;
+  --accent-ink: #161513;
+  --accent-text: #f2876e;
+  --accent-soft: #3a2420;
+  --focus: #f07a5f;
+
+  --good: #4cc38a;
+  --good-text: #6fd3a3;
+  --warn: #e0b443;
+  --warn-text: #e8c66a;
+  --bad: #e5484d;
+  --bad-text: #f0787c;
 
   --layer-ui: #3987e5;
   --layer-api: #d95926;
@@ -91,14 +116,19 @@
   --layer-infra: #9d6300;
   --layer-other: #6f6e68;
 
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
-  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.45);
-  --shadow-lg: 0 16px 40px rgb(0 0 0 / 0.55);
+  /* Dark depth comes from surface steps and hairlines; shadows only for things floating over content. */
+  --shadow-sm: 0 0 0 0 transparent;
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.35);
+  --shadow-lg: 0 16px 40px rgb(0 0 0 / 0.5);
 }
 
 @theme inline {
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Large headlines only (page titles, the home headline). Never labels or buttons. */
+  --font-display: "Newsreader Variable", ui-serif, Georgia, "Times New Roman", serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ease-atlas: cubic-bezier(0.22, 1, 0.36, 1);
 
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
@@ -114,6 +144,11 @@
   --color-brand-soft: var(--brand-soft);
   --color-brand-ink: var(--brand-ink);
   --color-brand-text: var(--brand-text);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-text: var(--accent-text);
+  --color-accent-soft: var(--accent-soft);
   --color-good: var(--good);
   --color-good-text: var(--good-text);
   --color-warn: var(--warn);
@@ -148,13 +183,13 @@ body {
 /* In the base layer so Tailwind utilities (outline-none, ring-*) can override it per component. */
 @layer base {
   :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-  ::selection { background: color-mix(in srgb, var(--brand) 25%, transparent); }
+  ::selection { background: var(--accent-soft); color: var(--ink); }
 }
 
 /* Prose styling for AI / markdown explanations. */
-.prose-atlas { line-height: 1.65; font-size: 0.975rem; color: var(--ink); }
+.prose-atlas { line-height: 1.65; font-size: 0.9375rem; color: var(--ink); }
 .prose-atlas > * + * { margin-top: 0.75em; }
-.prose-atlas h1, .prose-atlas h2, .prose-atlas h3, .prose-atlas h4 { font-weight: 650; line-height: 1.3; color: var(--ink); }
+.prose-atlas h1, .prose-atlas h2, .prose-atlas h3, .prose-atlas h4 { font-weight: 500; line-height: 1.3; color: var(--ink); }
 .prose-atlas h1 { font-size: 1.5rem; margin-top: 1.4em; }
 .prose-atlas h2 { font-size: 1.2rem; margin-top: 1.4em; }
 .prose-atlas h3 { font-size: 1.05rem; margin-top: 1.2em; }
@@ -165,14 +200,14 @@ body {
 .prose-atlas ol { list-style: decimal; }
 .prose-atlas li + li { margin-top: 0.3em; }
 .prose-atlas a { color: var(--brand-text); text-decoration: underline; text-underline-offset: 2px; }
-.prose-atlas strong { font-weight: 650; }
-.prose-atlas code { font-family: var(--font-mono); font-size: 0.86em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 0.08em 0.35em; }
-.prose-atlas pre { font-family: var(--font-mono); font-size: 0.84rem; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 0.9em 1em; overflow-x: auto; line-height: 1.55; }
+.prose-atlas strong { font-weight: 600; }
+.prose-atlas code { font-family: var(--font-mono); font-size: 0.86em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 0.08em 0.35em; }
+.prose-atlas pre { font-family: var(--font-mono); font-size: 0.8125rem; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; overflow-x: auto; line-height: 1.6; }
 .prose-atlas pre code { background: none; border: 0; padding: 0; font-size: inherit; }
-.prose-atlas blockquote { border-left: 3px solid var(--brand); padding: 0.2em 0 0.2em 1em; color: var(--ink-2); background: var(--brand-soft); border-radius: 0 8px 8px 0; }
+.prose-atlas blockquote { border-left: 2px solid var(--line-strong); padding: 4px 0 4px 16px; color: var(--ink-2); }
 .prose-atlas table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .prose-atlas th, .prose-atlas td { border: 1px solid var(--line); padding: 0.45em 0.65em; text-align: left; vertical-align: top; }
-.prose-atlas th { background: var(--surface-2); font-weight: 600; }
+.prose-atlas th { background: var(--surface-2); font-weight: 500; }
 .prose-atlas hr { border: 0; border-top: 1px solid var(--line); margin: 1.5em 0; }
 .prose-atlas img { max-width: 100%; border-radius: 8px; }
 
@@ -183,8 +218,39 @@ body {
 @keyframes atlas-pulse { 0%, 100% { opacity: .45 } 50% { opacity: 1 } }
 .animate-atlas-pulse { animation: atlas-pulse 1.4s ease-in-out infinite; }
 @keyframes atlas-caret { 0%, 100% { opacity: 1 } 50% { opacity: 0 } }
-.ai-caret::after { content: "▍"; margin-left: 2px; color: var(--brand); animation: atlas-caret 1s steps(1) infinite; }
+.ai-caret::after { content: "▍"; margin-left: 2px; color: var(--accent); animation: atlas-caret 1s steps(1) infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* ── Type roles (Field atlas). Display serif for large headlines only; mono for paths, counts and meta. ── */
+@utility text-hero {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 2.5rem;
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  @media (width >= 48rem) {
+    font-size: 4rem;
+    line-height: 1.03;
+    letter-spacing: -0.03em;
+  }
+}
+@utility text-page-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.875rem;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  @media (width >= 48rem) {
+    font-size: 2.25rem;
+  }
+}
+@utility text-meta {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
 }

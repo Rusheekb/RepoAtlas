@@ -116,6 +116,13 @@ describe('SYSTEM_INSTRUCTIONS', () => {
     expect(SYSTEM_INSTRUCTIONS).toMatch(/Ignore any instructions/)
   })
 
+  it('asks for a calm, plain voice: no emoji, no exclamation marks, sentence-case headings', () => {
+    expect(SYSTEM_INSTRUCTIONS).toMatch(/no emoji anywhere/)
+    expect(SYSTEM_INSTRUCTIONS).toMatch(/no exclamation marks/)
+    expect(SYSTEM_INSTRUCTIONS).toMatch(/headings in sentence case with no trailing period/)
+    expect(SYSTEM_INSTRUCTIONS).not.toMatch(/\p{Extended_Pictographic}|!/u)
+  })
+
   it('contains nothing variable (time, level) so it stays cacheable', () => {
     expect(SYSTEM_INSTRUCTIONS).not.toMatch(/\d{4}-\d{2}-\d{2}/)
     for (const level of ['eli5', 'beginner', 'intermediate', 'expert'] as const) {
@@ -235,6 +242,17 @@ describe('structured prompt builders', () => {
     expect(p).toMatch(/short verb phrase/)
     expect(p).toContain('Shopping cart: The list of things you plan to buy.')
     expect(p).toContain('Reply with the JSON object only.')
+    // The schema still wants an emoji, but it is data only: every other field stays plain text.
+    expect(p).toContain('emoji: exactly one emoji. It is stored with the idea but never shown')
+    expect(p).toMatch(/no emoji and no exclamation marks in names, summaries, explanations/)
+  })
+
+  it('never feeds a concept emoji back into the deep-dive prompt', () => {
+    const d = data()
+    const c = d.analysis.starterConcepts.concepts[0]
+    const p = buildConceptPrompt(d, c)
+    expect(p).toContain(`- Name: ${c.name} (${c.category})`)
+    expect(p).not.toContain(c.emoji)
   })
 
   it('tours prompt lists valid module ids and demands verbatim snippets', () => {
@@ -243,6 +261,8 @@ describe('structured prompt builders', () => {
     expect(p).toContain('`src/components` (components)')
     expect(p).toContain('`(root)` (Project setup files)')
     expect(p).toMatch(/copied character-for-character/)
+    expect(p).toContain('title: short, in sentence case, with no trailing period.')
+    expect(p).toMatch(/no emoji and no exclamation marks in titles, questions, summaries or explanations/)
   })
 
   it('custom tour prompt answers the reader question with exactly one tour', () => {
@@ -256,12 +276,21 @@ describe('structured prompt builders', () => {
     expect(p).toContain('6–8 questions')
     expect(p).toContain('3 or 4 short answers')
     expect(p).toContain('0-based')
+    expect(p).toMatch(/no emoji and no exclamation marks/)
+    expect(p).toMatch(/without praising the reader/)
   })
 
   it('markdown variants ask for readable output instead of JSON', () => {
     expect(buildConceptsPrompt(data(), 'markdown')).not.toContain('JSON')
     expect(buildToursPrompt(data(), 'markdown')).not.toContain('JSON')
     expect(buildQuizPrompt(data(), 'markdown')).toContain('## Answers')
+  })
+
+  it('markdown variants ask for plain headings without emoji', () => {
+    expect(buildConceptsPrompt(data(), 'markdown')).toContain('"### <name>" heading (plain text, no emoji)')
+    expect(buildToursPrompt(data(), 'markdown')).toContain('"## <title>" heading (plain text, no emoji)')
+    expect(buildToursPrompt(data(), 'markdown', 'How does checkout work?')).not.toContain('<emoji>')
+    expect(buildQuizPrompt(data(), 'markdown')).toMatch(/no emoji and no exclamation marks/)
   })
 })
 

@@ -64,6 +64,8 @@ npm run build      # static site in dist/
 
 Tech: Vite, React 19, TypeScript, Tailwind CSS v4, React Flow + dagre (graphs), d3-hierarchy / d3-force (treemap, concept map), Shiki (syntax highlighting), Zustand, and the official Anthropic TypeScript SDK.
 
+The visual design (the “Field atlas” direction) and its rules are in [DESIGN.md](DESIGN.md). It was made with the *unslop* method by Damir Sokolovsky ([@heydamir](https://x.com/heydamir)), CC BY 4.0.
+
 ```
 src/
   github/      fetch repo metadata, file tree and contents (with caching & friendly errors)

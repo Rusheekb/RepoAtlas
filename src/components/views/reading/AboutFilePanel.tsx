@@ -6,6 +6,7 @@ import { NeighborhoodGraph } from '@/components/graphs'
 import { RichText } from '@/components/shell/bits'
 import { LayerBadge } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { Icon, RoleIcon } from '@/components/ui/icons'
 import { formatNumber, pluralize } from '@/core/format'
 import { LAYER_INFO, ROLE_INFO } from '@/core/labels'
 import type { AnalyzedFile, ModuleInfo } from '@/core/types'
@@ -29,24 +30,27 @@ export interface AboutFilePanelProps {
 /** Outline entries shown before "Show all". */
 const OUTLINE_PREVIEW = 25
 
-function Section({ emoji, title, subtitle, children, className }: { emoji: string; title: string; subtitle?: ReactNode; children: ReactNode; className?: string }) {
+/** A quiet section of the panel: a hairline card with a plain heading (no icon) and a one-line note on how to use it. */
+function Section({ title, subtitle, children, className }: { title: string; subtitle?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={cn('rounded-2xl border border-line bg-surface p-4 shadow-sm', className)} aria-label={title}>
-      <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
-        <span aria-hidden>{emoji}</span>
-        {title}
-      </h3>
-      {subtitle && <p className="mt-0.5 text-xs leading-relaxed text-ink-3">{subtitle}</p>}
+    <section className={cn('rounded-2xl border border-line bg-surface p-4', className)} aria-label={title}>
+      <h3 className="text-sm font-medium text-ink">{title}</h3>
+      {subtitle && <p className="mt-1 text-xs leading-relaxed text-ink-3">{subtitle}</p>}
       <div className="mt-3">{children}</div>
     </section>
   )
 }
 
+/** Quiet inline link style for this panel: ink text with a hairline underline that darkens on hover. */
+const LINK = 'text-ink underline decoration-line-strong underline-offset-2 transition-[text-decoration-color] duration-150 ease-atlas hover:decoration-ink'
+
+/** A row in the outline or the list of web addresses: jumps to a line in the code. */
+const JUMP_ROW = 'flex w-full min-w-0 items-center gap-3 rounded-lg px-2 py-1 text-left transition-colors duration-150 ease-atlas hover:bg-surface-2'
+
 /** The right-hand pane of "Read the Code": what this file is for, in plain English, plus what's inside and what it connects to. */
 export const AboutFilePanel = forwardRef<HTMLDivElement, AboutFilePanelProps>(function AboutFilePanel(props, ref) {
   const { file, allFiles, module, explainRange, onCloseExplain, onOpenFile, onJumpToLine, onOpenModule, askHref, className } = props
   const [showAllSymbols, setShowAllSymbols] = useState(false)
-  const role = file.isEntry ? ROLE_INFO.entry : (ROLE_INFO[file.role] ?? ROLE_INFO.other)
   const plainRole = ROLE_INFO[file.role] ?? ROLE_INFO.other
   const layer = LAYER_INFO[file.layer] ?? LAYER_INFO.other
   const symbols = useMemo(() => file.symbols.slice().sort((a, b) => a.line - b.line), [file.symbols])
@@ -58,9 +62,17 @@ export const AboutFilePanel = forwardRef<HTMLDivElement, AboutFilePanelProps>(fu
       {explainRange && (
         <div data-testid="selection-explain">
           <div className="mb-2 flex items-center justify-between gap-2 px-1">
-            <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Your selection · {describeRange(explainRange)}</p>
-            <button type="button" onClick={onCloseExplain} className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-ink-2 hover:text-ink">
-              <X className="size-3.5" aria-hidden />
+            {/* The small accent mark matches the one beside the selected lines in the code. */}
+            <p className="flex items-center gap-2 text-sm text-ink-2">
+              <span className="h-3 w-0.5 shrink-0 rounded-full bg-accent" aria-hidden />
+              Your selection, {describeRange(explainRange)}
+            </p>
+            <button
+              type="button"
+              onClick={onCloseExplain}
+              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-ink-2 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
+            >
+              <Icon as={X} size={14} />
               Close
             </button>
           </div>
@@ -72,17 +84,14 @@ export const AboutFilePanel = forwardRef<HTMLDivElement, AboutFilePanelProps>(fu
             pitch="Claude will read these lines in context and explain what they do, step by step."
             autoRun
             compact
-            className="shadow-md ring-2 ring-brand/25"
           />
         </div>
       )}
 
       <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm" aria-labelledby="about-file-title">
-        <p className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">About this file</p>
-        <h2 id="about-file-title" className="mt-1 flex min-w-0 items-center gap-2 text-lg font-semibold text-ink">
-          <span className="shrink-0 text-xl leading-none" aria-hidden>
-            {role.emoji}
-          </span>
+        <h2 id="about-file-title" className="flex min-w-0 items-center gap-2 text-lg font-medium text-ink">
+          <span className="sr-only">About this file:</span>{' '}
+          <RoleIcon role={file.isEntry ? 'entry' : file.role} size={18} className="text-ink-3" />
           <span className="min-w-0 truncate" title={file.path}>
             {file.name}
           </span>
@@ -93,24 +102,21 @@ export const AboutFilePanel = forwardRef<HTMLDivElement, AboutFilePanelProps>(fu
           </p>
         )}
         {file.isEntry && (
-          <p className="mt-3 rounded-xl bg-brand-soft px-3 py-2 text-sm leading-relaxed text-ink">
-            <span className="font-semibold text-brand-text">🚀 A starting point. </span>
+          <p className="mt-3 rounded-lg bg-surface-2 px-3 py-2 text-sm leading-relaxed text-ink-2">
+            <span className="font-medium text-ink">A starting point. </span>
             <RichText text={file.entryReason ?? ROLE_INFO.entry.description} />
           </p>
         )}
-        <dl className="mt-3 space-y-2.5 text-sm">
+        <dl className="mt-4 space-y-3 text-sm">
           <div>
-            <dt className="text-xs font-medium text-ink-3">Its job</dt>
-            <dd className="mt-0.5 text-ink">
-              <span className="font-medium">
-                <span aria-hidden>{plainRole.emoji} </span>
-                {plainRole.label}
-              </span>
+            <dt className="text-xs text-ink-3">Its job</dt>
+            <dd className="mt-1 text-ink">
+              <span className="font-medium">{plainRole.label}</span>
               <span className="text-ink-2">: {plainRole.description}</span>
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-medium text-ink-3">Kind of code</dt>
+            <dt className="text-xs text-ink-3">Kind of code</dt>
             <dd className="mt-1 flex flex-wrap items-center gap-2">
               <LayerBadge layer={file.layer} />
               <span className="text-xs text-ink-2">{layer.description}</span>
@@ -118,16 +124,15 @@ export const AboutFilePanel = forwardRef<HTMLDivElement, AboutFilePanelProps>(fu
           </div>
           {module && (
             <div>
-              <dt className="text-xs font-medium text-ink-3">Part of</dt>
-              <dd className="mt-0.5">
+              <dt className="text-xs text-ink-3">Part of</dt>
+              <dd className="mt-1">
                 <button
                   type="button"
                   onClick={() => onOpenModule(module.id)}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-md text-left font-medium text-brand-text hover:underline"
+                  className={cn('max-w-full truncate rounded-sm text-left font-medium', LINK)}
                   title="Learn about this part of the project"
                 >
-                  <span aria-hidden>{module.emoji}</span>
-                  <span className="truncate">{module.name}</span>
+                  {module.name}
                 </button>
                 {module.role && module.role !== module.name && <span className="text-ink-2"> · {module.role}</span>}
               </dd>
@@ -136,9 +141,9 @@ export const AboutFilePanel = forwardRef<HTMLDivElement, AboutFilePanelProps>(fu
         </dl>
         <Link
           to={askHref}
-          className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-brand-text underline-offset-2 hover:underline"
+          className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-ink underline-offset-2 hover:underline"
         >
-          <MessageCircleQuestion className="size-4" aria-hidden />
+          <Icon as={MessageCircleQuestion} className="text-ink-3" />
           Ask a question about this file
         </Link>
       </section>
@@ -153,7 +158,6 @@ export const AboutFilePanel = forwardRef<HTMLDivElement, AboutFilePanelProps>(fu
       />
 
       <Section
-        emoji="🔗"
         title="How it connects"
         subtitle={hasLinks ? 'Files that use this one, and the files and tools it uses. Click one to open it.' : undefined}
       >
@@ -166,39 +170,30 @@ export const AboutFilePanel = forwardRef<HTMLDivElement, AboutFilePanelProps>(fu
 
       {symbols.length > 0 && (
         <Section
-          emoji="🗂️"
           title="What’s inside"
           subtitle={`${pluralize(symbols.length, 'named piece')} of code, in order. Click one to jump to it.`}
         >
-          <ul className="-mx-1.5 space-y-0.5" data-testid="outline">
+          <ul className="-mx-2 space-y-0.5" data-testid="outline">
             {shownSymbols.map((s, i) => {
-              const kind = SYMBOL_KIND_LABEL[s.kind] ?? { label: s.kind, emoji: '•' }
+              const kind = SYMBOL_KIND_LABEL[s.kind] ?? { label: s.kind }
               return (
                 <li key={`${s.name}:${s.line}:${i}`}>
-                  <button
-                    type="button"
-                    onClick={() => onJumpToLine(s.line)}
-                    className="flex w-full min-w-0 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left hover:bg-surface-2"
-                    title={s.signature ?? s.name}
-                  >
-                    <span className="shrink-0 text-sm leading-none" aria-hidden>
-                      {kind.emoji}
-                    </span>
+                  <button type="button" onClick={() => onJumpToLine(s.line)} className={JUMP_ROW} title={s.signature ?? s.name}>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-[13px] text-ink">{s.name}</span>
-                      <span className="block truncate text-[11px] text-ink-3">
+                      <span className="block truncate font-mono text-[13px] leading-5 text-ink">{s.name}</span>
+                      <span className="block truncate text-xs text-ink-3">
                         {kind.label}
                         {s.exported ? ' · shared with other files' : ''}
                       </span>
                     </span>
-                    <span className="shrink-0 text-[11px] text-ink-3 tabular-nums">line {formatNumber(s.line)}</span>
+                    <span className="shrink-0 text-meta">line {formatNumber(s.line)}</span>
                   </button>
                 </li>
               )
             })}
           </ul>
           {symbols.length > OUTLINE_PREVIEW && (
-            <button type="button" onClick={() => setShowAllSymbols((v) => !v)} className="mt-2 text-sm font-medium text-brand-text hover:underline">
+            <button type="button" onClick={() => setShowAllSymbols((v) => !v)} className={cn('mt-3 rounded-sm text-sm font-medium', LINK)}>
               {showAllSymbols ? 'Show fewer' : `Show all ${formatNumber(symbols.length)}`}
             </button>
           )}
@@ -207,21 +202,16 @@ export const AboutFilePanel = forwardRef<HTMLDivElement, AboutFilePanelProps>(fu
 
       {file.routes.length > 0 && (
         <Section
-          emoji="🧭"
           title="Web addresses it answers"
           subtitle="When someone visits one of these addresses, this file decides what happens. Click one to see the code."
         >
-          <ul className="-mx-1.5 space-y-0.5">
+          <ul className="-mx-2 space-y-0.5">
             {file.routes.map((r, i) => (
               <li key={`${r.method}:${r.path}:${r.line}:${i}`}>
-                <button
-                  type="button"
-                  onClick={() => onJumpToLine(r.line)}
-                  className="flex w-full min-w-0 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left hover:bg-surface-2"
-                >
-                  <span className="w-12 shrink-0 rounded-md bg-surface-2 py-0.5 text-center font-mono text-[11px] font-semibold text-ink-2">{r.method}</span>
+                <button type="button" onClick={() => onJumpToLine(r.line)} className={cn(JUMP_ROW, 'h-8 py-0')}>
+                  <span className="w-12 shrink-0 rounded-sm bg-surface-2 py-0.5 text-center font-mono text-xs font-medium text-ink-2">{r.method}</span>
                   <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink">{r.path}</span>
-                  <span className="shrink-0 text-[11px] text-ink-3 tabular-nums">line {formatNumber(r.line)}</span>
+                  <span className="shrink-0 text-meta">line {formatNumber(r.line)}</span>
                 </button>
               </li>
             ))}

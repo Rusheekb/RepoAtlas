@@ -155,7 +155,7 @@ beforeEach(() => {
 describe('ArchitecturePage', () => {
   it('shows the map with a plain-English hint, a legend and counts', () => {
     renderAt('/gh/acme/shop/map', <ArchitecturePage />)
-    expect(screen.getByRole('heading', { level: 1, name: /How It Connects/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: /How it connects/ })).toBeInTheDocument()
     expect(screen.getByText(/An arrow from A to B means A uses something from B/)).toBeInTheDocument()
     expect(screen.getByTestId('architecture-graph')).toBeInTheDocument()
     expect(screen.getByLabelText('Color legend')).toHaveTextContent('Screens & visuals')
@@ -293,7 +293,7 @@ describe('ArchitecturePage', () => {
 describe('CodeMapPage', () => {
   it('renders the treemap with a hint, folder stats and the biggest files', () => {
     renderAt('/gh/acme/shop/codemap', <CodeMapPage />)
-    expect(screen.getByRole('heading', { level: 1, name: /Where Code Lives/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: /Where code lives/ })).toBeInTheDocument()
     expect(screen.getByText(/Every rectangle is a file/)).toBeInTheDocument()
     const map = screen.getByTestId('code-treemap')
     expect(map).toHaveAttribute('data-root', '')
@@ -345,7 +345,7 @@ const AI_MAP: ConceptMap = {
 describe('ConceptsPage', () => {
   it('works without a key: the quick map, idea cards and a gentle invitation', () => {
     renderAt('/gh/acme/shop/concepts', <ConceptsPage />)
-    expect(screen.getByRole('heading', { level: 1, name: /Key Ideas/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: /Key ideas/ })).toBeInTheDocument()
     expect(screen.getByTestId('concept-graph')).toHaveAttribute('data-source', 'starter')
     expect(screen.getAllByTestId('concept-card')).toHaveLength(2)
     expect(screen.getAllByTestId('concept-card')[0]).toHaveTextContent('Orders')
@@ -372,7 +372,7 @@ describe('ConceptsPage', () => {
     await user.click(screen.getByRole('button', { name: /Copy a prompt/ }))
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
     expect(String(writeText.mock.calls[0][0]).length).toBeGreaterThan(100)
-    expect(await screen.findByText(/Copied!/)).toBeInTheDocument()
+    expect(await screen.findByText(/^Copied, now paste it into Claude$/)).toBeInTheDocument()
   })
 
   it('selecting an idea (graph or card) explains it and marks it read', async () => {
@@ -464,7 +464,7 @@ describe('ToursPage', () => {
   it('lists the starter tours with steps and progress, and invites adding a key', () => {
     useProgress.getState().markSeen('acme/shop', 'tour:startup:step:1')
     renderAt('/gh/acme/shop/tours', <ToursPage />)
-    expect(screen.getByRole('heading', { level: 1, name: /Guided Tours/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: /Guided tours/ })).toBeInTheDocument()
     const cards = screen.getAllByTestId('tour-card')
     expect(cards).toHaveLength(2)
     expect(cards[0]).toHaveTextContent('What happens when the shop opens?')
@@ -576,7 +576,7 @@ describe('ToursPage', () => {
     await user.click(screen.getByRole('button', { name: /Finish the tour/ }))
     expect(search().get('step')).toBe('4')
     const done = screen.getByTestId('tour-complete')
-    expect(within(done).getByRole('heading', { name: 'Tour complete! 🎉' })).toBeInTheDocument()
+    expect(within(done).getByRole('heading', { name: 'Tour finished' })).toBeInTheDocument()
     expect(within(done).getByText('Where do orders go?')).toBeInTheDocument()
     expect(within(done).getByRole('link', { name: /Start the next tour/ })).toHaveAttribute('href', '/gh/acme/shop/tours?tour=orders&step=1')
     expect(useProgress.getState().isSeen('acme/shop', 'tour:startup')).toBe(true)

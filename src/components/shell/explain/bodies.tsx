@@ -1,13 +1,15 @@
 import { useCallback, useMemo, type ReactNode } from 'react'
-import { BookOpen, Code, FolderOpen, Map as MapIcon } from 'lucide-react'
+import { BookA, BookOpen, Blocks, Code, Cog, Database, Folder, FolderOpen, Map as MapIcon, Monitor, Wrench, type LucideIcon } from 'lucide-react'
 import { AiAnswer } from '@/components/AiAnswer'
 import { GlossaryText } from '@/components/Glossary'
 import { conceptCategoryInfo, LayerBar, NeighborhoodGraph, TECH_ROWS, techRowOf } from '@/components/graphs'
 import { Badge, Button, LayerBadge, Markdown } from '@/components/ui'
+import { ConceptIcon, Icon, LayerDot, RoleIcon } from '@/components/ui/icons'
 import { formatBytes, formatCompact, formatNumber, pluralize } from '@/core/format'
 import { ROLE_INFO } from '@/core/labels'
 import { basename } from '@/core/paths'
 import type { AnalyzedFile, Concept, ExplainTarget, Layer, ModuleInfo, RepoAnalysis, ViewId } from '@/core/types'
+import type { TechRowId } from '@/components/graphs/categories'
 import { githubFileUrl, githubTreeUrl } from '@/github'
 import { describeFolder, getTech, getTerm } from '@/knowledge'
 import { useExplain } from '@/state/explain'
@@ -70,8 +72,21 @@ function useCodeLinks(analysis: RepoAnalysis, openFile: (path: string) => void) 
 }
 
 function ActionRow({ children }: { children: ReactNode }) {
-  return <div className="mt-5 flex flex-wrap gap-2">{children}</div>
+  return <div className="mt-4 flex flex-wrap gap-2">{children}</div>
 }
+
+/** Icons for the tech "layer cake" rows (what you see, the engine, where data lives, tools behind the scenes). */
+const TECH_ROW_ICON: Record<TechRowId, LucideIcon> = { surface: Monitor, engine: Cog, data: Database, tools: Wrench }
+
+/** The kit's small secondary button, for links that leave the app. */
+const LINK_BUTTON_CLASS =
+  'inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 text-sm font-medium text-ink transition-colors duration-150 ease-atlas hover:bg-surface-2'
+
+/** An inline link inside facts and notes: ink with a quiet underline. */
+const INLINE_LINK_CLASS = 'text-ink underline decoration-line-strong underline-offset-4 transition-[text-decoration-color] duration-150 ease-atlas hover:decoration-ink-3'
+
+/** A non-clickable tag the same size as a ChipButton. */
+const TAG_CLASS = 'inline-flex h-7 items-center rounded-md border border-line bg-surface-2 px-2.5 text-ink-2'
 
 /** A button-styled external link (for "Open on GitHub"). */
 function GitHubButton({ href, label = 'Open on GitHub' }: { href: string; label?: string }) {
@@ -82,9 +97,9 @@ function GitHubButton({ href, label = 'Open on GitHub' }: { href: string; label?
       href={url}
       target="_blank"
       rel="noreferrer noopener"
-      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 text-sm font-medium text-ink shadow-sm transition-colors hover:bg-surface-2"
+      className={LINK_BUTTON_CLASS}
     >
-      <GitHubMark className="size-3.5" />
+      <GitHubMark className="size-4 text-ink-2" />
       {label}
       <span className="sr-only">(opens in a new tab)</span>
     </a>
@@ -105,9 +120,9 @@ function ModuleChips({ items, onOpen, empty }: { items: { mod: ModuleInfo; weigh
       {items.map(({ mod, weight }) => (
         <li key={mod.id} className="max-w-full">
           <ChipButton onClick={() => onOpen(mod.id)} title={`${mod.name}: ${pluralize(weight, 'link')} between files`}>
-            <span aria-hidden>{mod.emoji}</span>
+            <LayerDot layer={mod.layer} />
             <span className="truncate">{mod.name}</span>
-            <span className="text-xs font-normal text-ink-3 tabular-nums">×{weight}</span>
+            <span className="font-mono text-xs font-normal text-ink-3 tabular-nums">×{weight}</span>
           </ChipButton>
         </li>
       ))}
@@ -141,7 +156,7 @@ function ModuleBody({ analysis, id }: { analysis: RepoAnalysis; id: string }) {
 
   return (
     <>
-      <PanelHero emoji={mod.emoji} title={mod.name} subtitle={mod.role}>
+      <PanelHero icon={<Icon as={Blocks} size={18} />} title={mod.name} subtitle={mod.role}>
         <LayerBadge layer={mod.layer} />
         <PathText path={mod.path} className="ml-1" />
       </PanelHero>
@@ -149,18 +164,18 @@ function ModuleBody({ analysis, id }: { analysis: RepoAnalysis; id: string }) {
         <GlossaryText text={mod.description} />
       </p>
 
-      <div className="mt-4 grid grid-cols-3 gap-2">
+      <div className="mt-4 grid grid-cols-3 gap-4">
         <MiniStat value={formatNumber(mod.fileCount)} label={mod.fileCount === 1 ? 'file' : 'files'} />
         <MiniStat value={formatCompact(mod.lines)} label="lines of code" />
         <MiniStat value={mod.languages[0] ?? '—'} label={mod.languages.length > 1 ? `+${mod.languages.length - 1} more languages` : 'language'} />
       </div>
 
       <ActionRow>
-        <Button size="sm" variant="primary" icon={<MapIcon className="size-4" aria-hidden />} onClick={() => goTo('map', { select: mod.id })}>
+        <Button size="sm" variant="primary" icon={<Icon as={MapIcon} />} onClick={() => goTo('map', { select: mod.id })}>
           Show on map
         </Button>
         {firstFile && (
-          <Button size="sm" icon={<FolderOpen className="size-4" aria-hidden />} onClick={() => goTo('explore', { file: firstFile, folder: mod.path || undefined })}>
+          <Button size="sm" icon={<Icon as={FolderOpen} />} onClick={() => goTo('explore', { file: firstFile, folder: mod.path || undefined })}>
             Browse its files
           </Button>
         )}
@@ -210,23 +225,32 @@ function FileBody({ analysis, path }: { analysis: RepoAnalysis; path: string }) 
 
   return (
     <>
-      <PanelHero emoji={role.emoji} title={<span className="font-mono text-lg">{file.name}</span>} subtitle={`${role.label}${file.language ? ` · ${file.language}` : ''}`}>
+      <PanelHero
+        icon={<RoleIcon role={file.isEntry ? 'entry' : file.role} size={18} />}
+        title={<span className="font-mono text-lg">{file.name}</span>}
+        subtitle={`${role.label}${file.language ? ` · ${file.language}` : ''}`}
+      >
         <LayerBadge layer={file.layer} />
-        {file.isEntry && <Badge tone="brand">🚀 Starting point</Badge>}
+        {file.isEntry && (
+          <Badge tone="brand">
+            <RoleIcon role="entry" size={14} className="text-ink-3" />
+            Starting point
+          </Badge>
+        )}
       </PanelHero>
       <PathText path={file.path} className="mt-3 block" />
       <p className="mt-3 text-[15px] leading-relaxed text-ink">
         <GlossaryText text={file.summary} />
       </p>
       {file.isEntry && file.entryReason && (
-        <p className="mt-3 rounded-xl bg-brand-soft px-4 py-2.5 text-sm text-ink">
-          <span className="font-semibold text-brand-text">Why it’s a starting point: </span>
+        <p className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-relaxed text-ink">
+          <span className="font-medium">Why it’s a starting point: </span>
           <RichText text={file.entryReason} />
         </p>
       )}
 
       <ActionRow>
-        <Button size="sm" variant="primary" icon={<Code className="size-4" aria-hidden />} onClick={() => goTo('explore', { file: file.path })}>
+        <Button size="sm" variant="primary" icon={<Icon as={Code} />} onClick={() => goTo('explore', { file: file.path })}>
           Read the code
         </Button>
         <GitHubButton href={githubFileUrl(meta.owner, meta.repo, commitSha, file.path)} />
@@ -241,7 +265,7 @@ function FileBody({ analysis, path }: { analysis: RepoAnalysis; path: string }) 
             {
               label: 'Folder',
               value: file.dir ? (
-                <button type="button" className="font-mono text-xs break-all text-brand-text hover:underline" onClick={() => open({ type: 'folder', path: file.dir })}>
+                <button type="button" className={`font-mono text-xs break-all ${INLINE_LINK_CLASS}`} onClick={() => open({ type: 'folder', path: file.dir })}>
                   {file.dir}
                 </button>
               ) : (
@@ -253,8 +277,9 @@ function FileBody({ analysis, path }: { analysis: RepoAnalysis; path: string }) 
                   {
                     label: 'Part of',
                     value: (
-                      <button type="button" className="text-left text-brand-text hover:underline" onClick={() => openModule(mod.id)}>
-                        {mod.emoji} {mod.name}
+                      <button type="button" className="inline-flex items-center gap-2 text-left" onClick={() => openModule(mod.id)}>
+                        <LayerDot layer={mod.layer} />
+                        <span className={INLINE_LINK_CLASS}>{mod.name}</span>
                       </button>
                     ),
                   },
@@ -276,18 +301,18 @@ function FileBody({ analysis, path }: { analysis: RepoAnalysis; path: string }) 
 
       {symbols.length > 0 && (
         <PanelSection title="What it defines" count={file.symbols.length}>
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
+          <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line">
             {symbols.map((s) => (
               <li key={`${s.name}:${s.line}`}>
                 <button
                   type="button"
                   onClick={() => goTo('explore', { file: file.path, line: String(s.line) })}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-2"
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors duration-150 ease-atlas hover:bg-surface-2"
                   title={s.signature ?? s.name}
                 >
-                  <span className="w-24 shrink-0 truncate text-[11px] font-medium text-ink-3">{SYMBOL_KIND_LABEL[s.kind] ?? s.kind}</span>
+                  <span className="w-24 shrink-0 truncate text-xs text-ink-3">{SYMBOL_KIND_LABEL[s.kind] ?? s.kind}</span>
                   <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink">{s.name}</span>
-                  <span className="shrink-0 text-[11px] text-ink-3 tabular-nums">line {s.line}</span>
+                  <span className="shrink-0 text-meta">line {s.line}</span>
                 </button>
               </li>
             ))}
@@ -303,7 +328,7 @@ function FileBody({ analysis, path }: { analysis: RepoAnalysis; path: string }) 
           <ul className="space-y-1">
             {file.routes.slice(0, 12).map((r) => (
               <li key={`${r.method}:${r.path}:${r.line}`} className="flex items-center gap-2 text-sm">
-                <span className="w-14 shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-center font-mono text-[11px] font-semibold text-ink-2">{r.method}</span>
+                <span className="w-14 shrink-0 rounded bg-surface-2 py-0.5 text-center font-mono text-xs text-ink-2">{r.method}</span>
                 <span className="min-w-0 truncate font-mono text-[13px] text-ink">{r.path}</span>
               </li>
             ))}
@@ -323,7 +348,7 @@ function FileBody({ analysis, path }: { analysis: RepoAnalysis; path: string }) 
                       <span className="font-mono text-xs">{name}</span>
                     </ChipButton>
                   ) : (
-                    <span className="inline-flex rounded-full border border-line bg-surface-2 px-3 py-1 font-mono text-xs text-ink-2">{name}</span>
+                    <span className={`${TAG_CLASS} font-mono text-xs`}>{name}</span>
                   )}
                 </li>
               )
@@ -372,19 +397,19 @@ function FolderBody({ analysis, path }: { analysis: RepoAnalysis; path: string }
 
   return (
     <>
-      <PanelHero emoji={role?.emoji ?? '📁'} title={name} subtitle={role?.role ?? 'A folder of files'}>
+      <PanelHero icon={<Icon as={Folder} size={18} />} title={name} subtitle={role?.role ?? 'A folder of files'}>
         <PathText path={clean} />
       </PanelHero>
       {role && <p className="mt-4 text-[15px] leading-relaxed text-ink">{role.description}</p>}
 
-      <div className="mt-4 grid grid-cols-3 gap-2">
+      <div className="mt-4 grid grid-cols-3 gap-4">
         <MiniStat value={formatNumber(files.length)} label={files.length === 1 ? 'file' : 'files'} />
         <MiniStat value={formatCompact(lines)} label="lines of code" />
         <MiniStat value={formatNumber(subfolders.length)} label={subfolders.length === 1 ? 'folder inside' : 'folders inside'} />
       </div>
 
       <ActionRow>
-        <Button size="sm" variant="primary" icon={<FolderOpen className="size-4" aria-hidden />} onClick={() => goTo('explore', { file: first, folder: clean || undefined })}>
+        <Button size="sm" variant="primary" icon={<Icon as={FolderOpen} />} onClick={() => goTo('explore', { file: first, folder: clean || undefined })}>
           Browse its files
         </Button>
         <GitHubButton href={githubTreeUrl(meta.owner, meta.repo, commitSha, clean)} />
@@ -393,7 +418,9 @@ function FolderBody({ analysis, path }: { analysis: RepoAnalysis; path: string }
       {mod && (
         <PanelSection title={mod.path === clean ? 'This folder is one of the main parts' : 'It belongs to'}>
           <ChipButton onClick={() => openModule(mod.id)}>
-            <span aria-hidden>{mod.emoji}</span> {mod.name} <span className="text-xs font-normal text-ink-3">· {mod.role}</span>
+            <LayerDot layer={mod.layer} />
+            <span className="truncate">{mod.name}</span>
+            <span className="truncate text-xs font-normal text-ink-3">· {mod.role}</span>
           </ChipButton>
         </PanelSection>
       )}
@@ -408,7 +435,7 @@ function FolderBody({ analysis, path }: { analysis: RepoAnalysis; path: string }
             {subfolders.slice(0, 16).map((sub) => (
               <li key={sub}>
                 <ChipButton onClick={() => open({ type: 'folder', path: sub })}>
-                  <span aria-hidden>📁</span>
+                  <Icon as={Folder} size={14} className="text-ink-3" />
                   <span className="font-mono text-xs">{basename(sub)}</span>
                 </ChipButton>
               </li>
@@ -441,16 +468,15 @@ function ConceptBody({ analysis, concept }: { analysis: RepoAnalysis; concept: C
 
   return (
     <>
-      <PanelHero emoji={concept.emoji || '💡'} title={concept.name} subtitle={category.label}>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2 py-0.5 text-xs font-medium text-ink-2" title={category.description}>
-          <span className="size-2.5 rounded-full" style={{ background: category.color }} aria-hidden />
+      <PanelHero icon={<ConceptIcon category={concept.category} size={18} />} title={concept.name} subtitle={category.label}>
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-0.5 text-xs font-medium text-ink-2" title={category.description}>
+          <span className="size-2 rounded-full" style={{ background: category.color }} aria-hidden />
           {category.label}
         </span>
-        <span className="text-xs text-ink-3">
-          <span aria-hidden>{'●'.repeat(importance)}</span>
-          <span aria-hidden className="opacity-30">
-            {'●'.repeat(5 - importance)}
-          </span>
+        <span className="inline-flex items-center gap-1 px-1" title={`Importance: ${importance} out of 5`}>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <span key={n} className={n <= importance ? 'size-1.5 rounded-full bg-ink-3' : 'size-1.5 rounded-full bg-line-strong'} aria-hidden />
+          ))}
           <span className="sr-only">Importance: {importance} out of 5</span>
         </span>
       </PanelHero>
@@ -514,7 +540,7 @@ function TechBody({ analysis, id }: { analysis: RepoAnalysis; id: string }) {
 
   return (
     <>
-      <PanelHero emoji={row?.emoji ?? '🧩'} title={name} subtitle={TECH_CATEGORY_LABEL[category] ?? 'Technology'}>
+      <PanelHero icon={<Icon as={row ? TECH_ROW_ICON[row.id] : Cog} size={18} />} title={name} subtitle={TECH_CATEGORY_LABEL[category] ?? 'Technology'}>
         {importance && <Badge tone={importance === 'core' ? 'brand' : 'neutral'}>{TECH_IMPORTANCE_LABEL[importance]}</Badge>}
         {row && <Badge>{row.label}</Badge>}
       </PanelHero>
@@ -555,7 +581,7 @@ function TechBody({ analysis, id }: { analysis: RepoAnalysis; id: string }) {
             href={url}
             target="_blank"
             rel="noreferrer noopener"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 text-sm font-medium text-ink shadow-sm transition-colors hover:bg-surface-2"
+            className={LINK_BUTTON_CLASS}
           >
             Visit its website
             <span className="sr-only">(opens in a new tab)</span>
@@ -579,7 +605,7 @@ function TermBody({ id }: { id: string }) {
 
   return (
     <>
-      <PanelHero emoji="📘" title={term.term} subtitle={cat ? `${cat.emoji} ${cat.label}` : undefined} />
+      <PanelHero icon={<Icon as={BookA} size={18} />} title={term.term} subtitle={cat?.label} />
       <p className="mt-4 text-[15px] leading-relaxed font-medium text-ink">{term.short}</p>
       <p className="mt-2 text-[15px] leading-relaxed text-ink-2">{term.long}</p>
       {term.analogy && <Analogy text={term.analogy} />}
@@ -604,7 +630,7 @@ function TermBody({ id }: { id: string }) {
       )}
 
       <ActionRow>
-        <Button size="sm" icon={<BookOpen className="size-4" aria-hidden />} onClick={() => goTo('glossary', { term: term.id })}>
+        <Button size="sm" icon={<Icon as={BookOpen} />} onClick={() => goTo('glossary', { term: term.id })}>
           See it in the glossary
         </Button>
       </ActionRow>

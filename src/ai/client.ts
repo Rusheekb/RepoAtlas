@@ -318,7 +318,7 @@ export async function testConnection(apiKey: string, model: ModelId): Promise<{ 
     await getClient(key).models.retrieve(model)
     const label = MODELS[model]?.label ?? model
     const note = key.startsWith('sk-ant-') ? '' : ' (Heads-up: Claude API keys usually start with sk-ant-.)'
-    return { ok: true, message: `Connected! ${label} is ready to explain code.${note}` }
+    return { ok: true, message: `Connected. ${label} is ready to explain code.${note}` }
   } catch (err) {
     return { ok: false, message: describeAiError(err) }
   }

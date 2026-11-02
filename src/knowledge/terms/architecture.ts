@@ -7,7 +7,7 @@ export const ARCHITECTURE_TERMS: GlossaryTerm[] = [
     term: 'Software architecture',
     aliases: ['software architecture', 'system architecture', 'system design', 'code architecture'],
     short: 'The big-picture organization of a program: its main parts, what each is responsible for and how they connect.',
-    long: 'Architecture decides things like "the website talks to one server, which talks to a database and a payment service". Good architecture keeps each part focused, so changes in one place don’t ripple everywhere. RepoAtlas’s "How It Connects" map is a view of a project’s architecture.',
+    long: 'Architecture decides things like "the website talks to one server, which talks to a database and a payment service". Good architecture keeps each part focused, so changes in one place don’t ripple everywhere. RepoAtlas’s “How it connects” map is a view of a project’s architecture.',
     analogy: 'Like a city plan: where the neighborhoods, roads and utilities go, before any single house is designed.',
     category: 'architecture',
     related: ['module', 'separation-of-concerns', 'mvc', 'microservice'],

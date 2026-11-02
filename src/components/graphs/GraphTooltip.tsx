@@ -1,10 +1,11 @@
 import { useCallback, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref, type RefObject } from 'react'
+import { stripEmoji } from '@/components/shell/text'
 
 /** Structured tooltip content. Rendered as plain text only (repo data is untrusted). */
 export interface TooltipContent {
   title: string
   subtitle?: string
-  /** Identity color shown as a short line-key before the title. */
+  /** Identity color shown as a small dot (like the legends) before the title. */
   color?: string
   /** Values lead, labels follow ("1,204 · lines"). */
   rows?: { value: string; label?: string; color?: string }[]
@@ -20,7 +21,7 @@ export type TooltipAnchor = { clientX: number; clientY: number } | { rect: DOMRe
  * markers and link targets go. Code keeps its exact spelling (so `__init__.py` stays as it is).
  */
 export function plainInline(text: string): string {
-  return text
+  return stripEmoji(text)
     .split(/(`+[^`\n]*`+)/g)
     .map((part, i) =>
       i % 2
@@ -118,23 +119,23 @@ export function GraphTooltip({ containerRef, placement = 'pointer', ref }: Graph
       style={{ transform: 'translate(-9999px, -9999px)' }}
     >
       <div className="flex items-center gap-2">
-        {content.color && <span className="h-[3px] w-3 shrink-0 rounded-full" style={{ background: content.color }} aria-hidden />}
-        <span className="min-w-0 font-semibold break-words text-ink">{content.title}</span>
+        {content.color && <span className="size-2 shrink-0 rounded-full" style={{ background: content.color }} aria-hidden />}
+        <span className="min-w-0 text-[13px] font-medium break-words text-ink">{stripEmoji(content.title)}</span>
       </div>
       {content.subtitle && <div className="mt-0.5 break-words text-ink-3">{content.subtitle}</div>}
       {content.rows && content.rows.length > 0 && (
-        <div className="mt-1.5 space-y-0.5">
+        <div className="mt-2 space-y-0.5">
           {content.rows.map((r, i) => (
-            <div key={i} className="flex items-baseline gap-1.5">
-              {r.color && <span className="h-[3px] w-2.5 shrink-0 translate-y-[-2px] rounded-full" style={{ background: r.color }} aria-hidden />}
-              <span className="shrink-0 font-semibold text-ink tabular-nums">{r.value}</span>
+            <div key={i} className="flex items-center gap-2">
+              {r.color && <span className="size-2 shrink-0 rounded-full" style={{ background: r.color }} aria-hidden />}
+              <span className="shrink-0 font-medium text-ink tabular-nums">{r.value}</span>
               {r.label && <span className="min-w-0 break-words text-ink-3">{r.label}</span>}
             </div>
           ))}
         </div>
       )}
-      {content.description && <p className="mt-1.5 leading-snug break-words text-ink-2">{plainInline(content.description)}</p>}
-      {content.hint && <p className="mt-1.5 text-[11px] text-ink-3">{content.hint}</p>}
+      {content.description && <p className="mt-2 leading-snug break-words text-ink-2">{plainInline(content.description)}</p>}
+      {content.hint && <p className="mt-2 text-ink-3">{content.hint}</p>}
     </div>
   )
 }

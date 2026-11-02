@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router'
-import { ArrowLeft, ArrowRight, Map as MapIcon, RotateCcw } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Flag, Lightbulb, Map as MapIcon, RotateCcw, Route } from 'lucide-react'
 import { ArchitectureGraph, buildArchitectureLayout, TourDiagram } from '@/components/graphs'
 import { useRepoNav } from '@/components/shell/hooks'
 import { RichText } from '@/components/shell/bits'
-import { Button, Markdown } from '@/components/ui'
+import { Button, Icon, LayerDot, Markdown, YouAreHerePin } from '@/components/ui'
+import { LAYER_INFO } from '@/core/labels'
 import { pluralize } from '@/core/format'
 import { dirname } from '@/core/paths'
 import type { RepoAnalysis, Tour } from '@/core/types'
@@ -20,7 +21,7 @@ export interface TourPlayerProps {
   tour: Tour
   /** Every tour on offer (to suggest the next one). */
   tours: Tour[]
-  /** 0-based; `tour.steps.length` shows the "Tour complete" card. */
+  /** 0-based; `tour.steps.length` shows the "Tour finished" card. */
   stepIndex: number
   onStepChange: (index: number) => void
   /** Address of the tour list. */
@@ -28,6 +29,9 @@ export interface TourPlayerProps {
   /** Address of a tour at a 0-based step. */
   tourHref: (tourId: string, stepIndex: number) => string
 }
+
+/** A small keycap for keyboard hints. */
+const KEYCAP = 'inline-flex h-5 min-w-5 items-center justify-center rounded border border-line-strong bg-surface-2 px-1 font-mono text-xs text-ink-2'
 
 /** Approximate size of the "Where this happens" map (used to pick the arrow direction that reads best). */
 const MINI_MAP_BOX = { width: 360, height: 400 }
@@ -44,7 +48,7 @@ function scrollAreaTop(el: HTMLElement): number {
 /**
  * Plays one guided tour: the step flow diagram on top, then the current step's explanation and the exact code it
  * talks about, a small map showing where in the project it happens, and Previous / Next (also ← / →).
- * Each step viewed is remembered; finishing shows a "Tour complete" card that suggests the next tour.
+ * Each step viewed is remembered; finishing shows a "Tour finished" card that suggests the next tour.
  */
 export function TourPlayer({ analysis, tour, tours, stepIndex, onStepChange, listHref, tourHref }: TourPlayerProps) {
   const { href, go } = useRepoNav()
@@ -126,90 +130,95 @@ export function TourPlayer({ analysis, tour, tours, stepIndex, onStepChange, lis
   const next = done ? pickNextTour(tours, tour.id, seen) : null
 
   return (
-    <div ref={topRef} className="mx-auto w-full max-w-6xl space-y-5 p-4 sm:p-6" data-testid="tour-player">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link to={listHref} className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-sm font-medium text-brand-text hover:bg-brand-soft">
-          <ArrowLeft className="size-4" aria-hidden /> All tours
-        </Link>
-        <p className="text-xs font-medium text-ink-3 tabular-nums">
-          {done ? `All ${pluralize(total, 'step')} done` : pluralize(total, 'step')}
-        </p>
-      </div>
-
-      <header className="flex items-start gap-3">
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-surface text-2xl shadow-sm" aria-hidden>
-          {tour.emoji || '🧭'}
-        </span>
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{tour.title}</h1>
-          {tour.summary && <RichText text={tour.summary} className="mt-1 block text-sm text-ink-2 sm:text-[15px]" />}
+    <div ref={topRef} className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6" data-testid="tour-player">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link
+            to={listHref}
+            className="-ml-2 inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-ink-2 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
+          >
+            <ArrowLeft className="size-4" strokeWidth={1.5} aria-hidden /> All tours
+          </Link>
+          <p className="text-meta">{done ? `All ${pluralize(total, 'step')} done` : pluralize(total, 'step')}</p>
         </div>
-      </header>
+
+        <header>
+          <h1 className="flex items-baseline gap-3 text-page-title text-ink">
+            <Icon as={Route} size={18} className="text-ink-3" />
+            <span className="min-w-0">{tour.title}</span>
+          </h1>
+          {tour.summary && <RichText text={tour.summary} className="mt-2 block max-w-3xl text-[15px] leading-relaxed text-ink-2" />}
+        </header>
+      </div>
 
       <div className="rounded-2xl border border-line bg-surface p-3 shadow-sm">
         <TourDiagram tour={tour} activeStep={index} onStepClick={goTo} modules={analysis.modules} files={analysis.files} orientation="horizontal" />
       </div>
 
       <p className="sr-only" aria-live="polite" aria-atomic="true">
-        {done ? `Tour complete: ${tour.title}` : `Step ${index + 1} of ${total}: ${step?.title ?? ''}`}
+        {done ? `Tour finished: ${tour.title}` : `Step ${index + 1} of ${total}: ${step?.title ?? ''}`}
       </p>
 
       {done ? (
-        <section className="rounded-2xl border border-line bg-surface px-5 py-10 text-center shadow-sm sm:px-10" data-testid="tour-complete" aria-labelledby="tour-complete-title">
-          <div className="text-5xl motion-safe:animate-bounce" aria-hidden>
-            🏁
-          </div>
-          <h2 id="tour-complete-title" className="mt-4 text-2xl font-semibold text-ink">
-            Tour complete! 🎉
-          </h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm text-ink-2 sm:text-[15px]">
-            You followed “{tour.title}” from start to finish, all {pluralize(total, 'step')}. That’s a real piece of this project you now understand.
-          </p>
-          {next ? (
-            <div className="mx-auto mt-7 max-w-lg rounded-2xl border border-line bg-surface-2 p-4 text-left">
-              <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Up next</p>
-              <div className="mt-2 flex items-start gap-3">
-                <span className="text-2xl leading-none" aria-hidden>
-                  {next.emoji || '🧭'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-ink">{next.title}</p>
-                  {next.summary && <RichText text={next.summary} className="mt-0.5 block text-sm text-ink-2" />}
+        <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8" data-testid="tour-complete" aria-labelledby="tour-complete-title">
+          <div className="max-w-2xl">
+            <h2 id="tour-complete-title" className="flex items-center gap-3 text-2xl font-medium text-ink">
+              <Icon as={Flag} size={18} className="text-ink-3" />
+              Tour finished
+            </h2>
+            <p className="mt-2 text-[15px] leading-relaxed text-ink-2">
+              You followed “{tour.title}” from start to finish, all {pluralize(total, 'step')}. That’s a real piece of this project you now
+              understand.
+            </p>
+            {next ? (
+              <div className="mt-6 rounded-xl border border-line bg-surface-2 p-4">
+                <p className="text-sm text-ink-3">Up next</p>
+                <div className="mt-2 flex items-start gap-3">
+                  <Icon as={Route} size={18} className="mt-0.5 text-ink-3" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-ink">{next.title}</p>
+                    {next.summary && <RichText text={next.summary} className="mt-1 block text-sm text-ink-2" />}
+                  </div>
                 </div>
+                <Link
+                  to={tourHref(next.id, resumeStepIndex(next, seen))}
+                  className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 text-sm font-medium text-brand-ink shadow-sm transition-colors duration-150 ease-atlas hover:bg-brand-hover sm:w-auto"
+                >
+                  Start the next tour <ArrowRight className="size-4" strokeWidth={1.5} aria-hidden />
+                </Link>
               </div>
+            ) : (
+              <p className="mt-6 text-sm text-ink-2">
+                You’ve finished every tour on offer.{' '}
+                <Link to={href('quiz')} className="text-ink underline decoration-line-strong underline-offset-2 hover:decoration-ink">
+                  Test yourself with a quick quiz
+                </Link>{' '}
+                to see how much stuck.
+              </p>
+            )}
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => goTo(0)} icon={<RotateCcw className="size-4" strokeWidth={1.5} aria-hidden />}>
+                Take this tour again
+              </Button>
               <Link
-                to={tourHref(next.id, resumeStepIndex(next, seen))}
-                className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-medium text-brand-ink shadow-sm hover:bg-brand-hover"
+                to={listHref}
+                className="inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-medium text-ink-2 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
               >
-                Start the next tour <ArrowRight className="size-4" aria-hidden />
+                Back to all tours
               </Link>
             </div>
-          ) : (
-            <p className="mx-auto mt-6 max-w-lg text-sm text-ink-2">
-              You’ve finished every tour on offer.{' '}
-              <Link to={href('quiz')} className="font-medium text-brand-text underline underline-offset-2">
-                Test yourself with a quick quiz
-              </Link>{' '}
-              to see how much stuck.
-            </p>
-          )}
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
-            <Button variant="secondary" onClick={() => goTo(0)} icon={<RotateCcw className="size-4" aria-hidden />}>
-              Take this tour again
-            </Button>
-            <Link to={listHref} className="inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink">
-              Back to all tours
-            </Link>
           </div>
         </section>
       ) : (
         step && (
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
             <article className="min-w-0 rounded-2xl border border-line bg-surface p-5 shadow-sm sm:p-6" aria-labelledby="tour-step-title" data-testid="tour-step">
-              <p className="text-xs font-semibold tracking-wide text-brand-text uppercase">
+              {/* The signature: this step is where the reader is on the route. */}
+              <p className="flex items-center gap-1.5 text-sm text-ink-2 tabular-nums">
+                <YouAreHerePin size={14} />
                 Step {index + 1} of {total}
               </p>
-              <h2 id="tour-step-title" className="mt-1 text-xl font-semibold text-ink">
+              <h2 id="tour-step-title" className="mt-2 text-xl font-medium text-ink">
                 {step.title}
               </h2>
               {step.explanation.trim() && (
@@ -229,45 +238,57 @@ export function TourPlayer({ analysis, tour, tours, stepIndex, onStepChange, lis
                   gitRef={analysis.commitSha || analysis.ref}
                 />
               ) : (
-                <div className="mt-5 flex items-start gap-3 rounded-xl border border-dashed border-line bg-surface-2 px-4 py-3 text-sm text-ink-2">
-                  <span className="text-lg leading-none" aria-hidden>
-                    💡
-                  </span>
+                <div className="mt-5 flex items-start gap-3 rounded-lg border border-dashed border-line-strong bg-surface-2 px-4 py-3 text-sm text-ink-2">
+                  <Icon as={Lightbulb} className="mt-0.5 text-ink-3" />
                   <p>This step is about the big picture, so there’s no code to read here. Just take the idea with you to the next step.</p>
                 </div>
               )}
               <nav aria-label="Tour steps" className="mt-6 flex items-center justify-between gap-3 border-t border-line pt-4">
-                <Button variant="secondary" onClick={() => goTo(index - 1)} disabled={index === 0} icon={<ArrowLeft className="size-4" aria-hidden />}>
+                <Button variant="secondary" onClick={() => goTo(index - 1)} disabled={index === 0} icon={<ArrowLeft className="size-4" strokeWidth={1.5} aria-hidden />}>
                   Previous
                 </Button>
-                <span className="hidden text-xs text-ink-3 sm:inline">Tip: use the ← and → keys</span>
-                <Button variant="primary" onClick={() => goTo(index + 1)} iconRight={index === total - 1 ? undefined : <ArrowRight className="size-4" aria-hidden />}>
-                  {index === total - 1 ? 'Finish the tour 🎉' : 'Next'}
+                <span className="hidden items-center gap-1.5 text-xs text-ink-3 sm:inline-flex">
+                  <span>Or use</span>
+                  <kbd className={KEYCAP}>
+                    ←<span className="sr-only"> left arrow</span>
+                  </kbd>
+                  <kbd className={KEYCAP}>
+                    →<span className="sr-only"> right arrow</span>
+                  </kbd>
+                </span>
+                <Button
+                  variant="primary"
+                  onClick={() => goTo(index + 1)}
+                  iconRight={index === total - 1 ? undefined : <ArrowRight className="size-4" strokeWidth={1.5} aria-hidden />}
+                >
+                  {index === total - 1 ? 'Finish the tour' : 'Next'}
                 </Button>
               </nav>
             </article>
 
-            <aside className="min-w-0 space-y-3" aria-label="Where this step happens">
+            <aside className="min-w-0" aria-label="Where this step happens">
               <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
                 <div className="px-4 pt-4">
-                  <h3 className="text-sm font-semibold text-ink">
-                    <span aria-hidden>📍 </span>Where this happens
-                  </h3>
+                  <h3 className="text-sm font-medium text-ink">Where this happens</h3>
                   {module ? (
                     <>
-                      <p className="mt-1 text-sm text-ink-2">
-                        In <span className="font-medium text-ink">{module.emoji} {module.name}</span>
-                        <span aria-hidden> · </span>
+                      <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-ink-2">
+                        <span>In</span>
+                        <span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-ink">
+                          <LayerDot layer={LAYER_INFO[module.layer] ? module.layer : 'other'} />
+                          {module.name}
+                        </span>
+                        <span aria-hidden>·</span>
                         <span className="sr-only">, </span>
                         {module.role}
                       </p>
-                      <p className="mt-0.5 text-xs text-ink-3">Shown with the parts it works with most.</p>
+                      <p className="mt-1 text-xs text-ink-3">Shown with the parts it works with most</p>
                     </>
                   ) : (
-                    <p className="mt-1 text-sm text-ink-2">This step is about the project as a whole, not one part of it.</p>
+                    <p className="mt-1 text-sm text-ink-2">This step is about the project as a whole, not one part of it</p>
                   )}
                 </div>
-                <div className="relative mt-3 h-[340px] border-t border-line lg:h-[420px]">
+                <div className="relative mt-4 h-85 border-t border-line lg:h-105">
                   <ArchitectureGraph
                     modules={slice.modules}
                     edges={slice.edges}
@@ -284,12 +305,12 @@ export function TourPlayer({ analysis, tour, tours, stepIndex, onStepChange, lis
                   />
                 </div>
                 {moduleId && (
-                  <div className="border-t border-line px-4 py-2.5">
+                  <div className="border-t border-line px-2 py-2">
                     <Link
                       to={href('map', { select: moduleId })}
-                      className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-text hover:underline"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-ink-2 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
                     >
-                      <MapIcon className="size-4" aria-hidden /> Show on the full map
+                      <MapIcon className="size-4" strokeWidth={1.5} aria-hidden /> Show on the full map
                     </Link>
                   </div>
                 )}

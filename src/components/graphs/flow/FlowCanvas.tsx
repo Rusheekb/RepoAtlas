@@ -31,6 +31,7 @@ import { Maximize2, ZoomIn } from 'lucide-react'
 import '@xyflow/react/dist/style.css'
 import '../graphs.css'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import { useExplain } from '@/state/explain'
 import { GraphTooltip, type GraphTooltipHandle, type TooltipContent } from '../GraphTooltip'
 import { useElementSize, usePrefersReducedMotion } from '../hooks'
@@ -445,12 +446,12 @@ export function FlowCanvas<N extends Node, E extends Edge>({
   const toggle = plan?.crowded ? (
     <button
       type="button"
-      className="absolute bottom-3 z-10 inline-flex h-8 max-w-[calc(100%-140px)] -translate-x-1/2 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-xs font-medium text-ink-2 shadow-sm hover:border-line-strong hover:text-ink"
+      className="absolute bottom-3 z-10 inline-flex h-8 max-w-[calc(100%-140px)] -translate-x-1/2 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 shadow-sm hover:border-line-strong hover:text-ink motion-safe:transition-colors motion-safe:duration-150 motion-safe:ease-atlas"
       style={{ left: Math.max(70, (size.width - inset) / 2) }}
       onClick={() => askView(mode === 'all' ? 'auto' : 'all')}
       data-testid="flow-view-toggle"
     >
-      {mode === 'all' ? <ZoomIn className="size-3.5 shrink-0" aria-hidden /> : <Maximize2 className="size-3.5 shrink-0" aria-hidden />}
+      <Icon as={mode === 'all' ? ZoomIn : Maximize2} size={14} />
       <span className="truncate">{mode === 'all' ? 'Zoom back in to read' : overviewLabel}</span>
     </button>
   ) : null
@@ -501,7 +502,7 @@ export function FlowCanvas<N extends Node, E extends Edge>({
               onMoveEnd={onMoveEnd}
             >
               <ZoomedArrowMarkers normal={markers.normal} active={markers.active} />
-              <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="var(--line-strong)" />
+              <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--line-strong)" />
               {showControls && <Controls showInteractive={false} position="bottom-left" onFitView={() => askView('all')} />}
               {miniMapShown && (
                 <MiniMap<N>
@@ -533,7 +534,7 @@ export function FlowCanvas<N extends Node, E extends Edge>({
         {toggle}
         <GraphTooltip ref={tooltipRef} containerRef={containerRef} />
       </div>
-      {footer && <div className="atlas-flow-footer shrink-0 border-t border-line px-4 py-2.5">{footer}</div>}
+      {footer && <div className="atlas-flow-footer shrink-0 border-t border-line px-4 py-3">{footer}</div>}
     </div>
   )
 }

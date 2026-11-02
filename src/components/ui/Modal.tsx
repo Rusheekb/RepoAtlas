@@ -40,7 +40,7 @@ export function Modal({
         if (e.target === ref.current) onClose()
       }}
       className={cn(
-        'm-auto w-[min(640px,calc(100vw-2rem))] max-h-[calc(100vh-2rem)] overflow-hidden rounded-2xl border border-line bg-surface p-0 text-ink shadow-lg backdrop:bg-black/40 backdrop:backdrop-blur-[2px]',
+        'm-auto w-[min(640px,calc(100vw-2rem))] max-h-[calc(100vh-2rem)] overflow-hidden rounded-2xl border border-line bg-surface p-0 text-ink shadow-lg backdrop:bg-black/40',
         className,
       )}
     >
@@ -48,7 +48,7 @@ export function Modal({
         <div className="flex max-h-[calc(100vh-2rem)] flex-col">
           <div className="flex items-start gap-3 border-b border-line px-6 py-4">
             <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-semibold">{title}</h2>
+              <h2 className="text-lg font-medium">{title}</h2>
               {description && <p className="mt-0.5 text-sm text-ink-2">{description}</p>}
             </div>
             <IconButton aria-label="Close" size="sm" onClick={onClose} icon={<X className="size-4" />} />

@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Lightbulb } from 'lucide-react'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import { INLINE_CODE_CLASS, splitCode } from '@/components/shell/bits'
 import type { GlossaryTerm } from '@/core/types'
 import { findTermsInText, getTerm } from '@/knowledge'
@@ -138,8 +139,8 @@ function TermTrigger({ term, children, className }: { term: GlossaryTerm; childr
         ref={triggerRef}
         type="button"
         className={cn(
-          'inline cursor-help rounded-[3px] p-0 text-left underline decoration-ink-3 decoration-dotted decoration-[1.5px] underline-offset-[3px] transition-colors hover:text-brand-text hover:decoration-brand',
-          open && 'text-brand-text decoration-brand',
+          'inline cursor-help rounded-xs p-0 text-left underline decoration-ink-3 decoration-dotted decoration-[1.5px] underline-offset-4 transition-[text-decoration-color] duration-150 ease-atlas hover:decoration-ink',
+          open && 'decoration-ink',
           className,
         )}
         aria-expanded={open}
@@ -179,9 +180,9 @@ function TermTrigger({ term, children, className }: { term: GlossaryTerm; childr
             role="group"
             aria-label={`What “${term.term}” means`}
             className={cn(
-              'fixed z-[60] rounded-2xl border border-line bg-surface p-4 text-left text-ink shadow-lg',
+              'fixed z-[60] rounded-xl border border-line bg-surface p-4 text-left text-ink shadow-lg',
               pos ? 'opacity-100' : 'opacity-0',
-              'motion-safe:transition-opacity motion-safe:duration-150',
+              'motion-safe:transition-opacity motion-safe:duration-150 motion-safe:ease-atlas',
             )}
             style={{ top: pos?.top ?? 0, left: pos?.left ?? 0, width: pos?.width ?? POPOVER_WIDTH }}
             onMouseEnter={clearTimer}
@@ -201,26 +202,24 @@ function TermTrigger({ term, children, className }: { term: GlossaryTerm; childr
               }
             }}
           >
-            <p className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-brand-text uppercase">
-              <span aria-hidden>📘</span> Glossary
-            </p>
-            <p className="mt-1 text-base font-semibold text-ink">{term.term}</p>
+            <p className="text-xs leading-4 text-ink-3">Glossary</p>
+            <p className="mt-1 text-base font-medium text-ink">{term.term}</p>
             <p id={descId} className="mt-1 text-sm leading-relaxed text-ink">
               {term.short}
             </p>
             {term.analogy && (
-              <p className="mt-2.5 rounded-lg bg-surface-2 px-3 py-2 text-[13px] leading-snug text-ink-2">
-                <span aria-hidden>💡 </span>
-                {term.analogy}
+              <p className="mt-3 flex gap-2 rounded-md bg-surface-2 px-3 py-2 text-[13px] leading-5 text-ink-2">
+                <Icon as={Lightbulb} size={14} className="mt-0.5 text-ink-3" />
+                <span>{term.analogy}</span>
               </p>
             )}
             <button
               type="button"
               onClick={learnMore}
-              className="mt-3 inline-flex items-center gap-1 rounded-md text-sm font-semibold text-brand-text hover:underline"
+              className="mt-3 inline-flex items-center gap-1 rounded-sm text-sm font-medium text-ink underline-offset-4 hover:underline"
             >
               Learn more
-              <ArrowRight className="size-3.5" aria-hidden />
+              <Icon as={ArrowRight} size={14} />
             </button>
           </div>,
           document.body,

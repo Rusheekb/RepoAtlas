@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { ArrowRight, FolderOpen } from 'lucide-react'
+import { ArrowRight, FolderOpen, MapPinOff } from 'lucide-react'
 import { ArchitectureGraph, buildArchitectureLayout } from '@/components/graphs'
 import { useMeasuredElement } from '@/components/graphs/hooks'
 import { useIsDesktop, useRepoNav } from '@/components/shell/hooks'
-import { Button, EmptyState, LayerLegend, Segmented } from '@/components/ui'
+import { Button, EmptyState, Icon, LayerLegend, Segmented } from '@/components/ui'
 import { bestFitDirection, moduleRows, presentLayers } from '@/components/views/visual/architecture'
 import { ModuleDrillDown } from '@/components/views/visual/ModuleDrillDown'
 import { ModuleTable } from '@/components/views/visual/ModuleTable'
@@ -158,16 +158,16 @@ export default function ArchitecturePage() {
       value={direction}
       onChange={setDirChoice}
       options={[
-        { value: 'LR', label: '→ Sideways', title: 'Arrows flow from left to right' },
-        { value: 'TB', label: '↓ Top-down', title: 'Arrows flow from top to bottom' },
+        { value: 'LR', label: 'Sideways', title: 'Arrows flow from left to right' },
+        { value: 'TB', label: 'Top-down', title: 'Arrows flow from top to bottom' },
       ]}
     />
   )
 
   return (
-    <div className="flex h-full min-h-[560px] shrink-0 flex-col gap-4 p-4 sm:p-6" data-testid="architecture-page">
+    <div className="flex h-full min-h-140 shrink-0 flex-col gap-4 p-4 sm:p-6" data-testid="architecture-page">
       <ViewHeader
-        emoji={info.emoji}
+        view="map"
         title={info.label}
         hint={HINT}
         actions={
@@ -179,8 +179,8 @@ export default function ArchitecturePage() {
                 value={mode}
                 onChange={(m) => update({ as: m === 'list' ? 'list' : null })}
                 options={[
-                  { value: 'map', label: '🗺️ Map view' },
-                  { value: 'list', label: '📋 List view' },
+                  { value: 'map', label: 'Map view' },
+                  { value: 'list', label: 'List view' },
                 ]}
               />
               {mode === 'map' && directionToggle}
@@ -208,9 +208,9 @@ export default function ArchitecturePage() {
             onOpenFile={openFile}
           />
         ) : (
-          <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-line">
+          <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-line-strong">
             <EmptyState
-              icon="🧭"
+              icon={<Icon as={MapPinOff} size={18} />}
               title="We couldn’t find that part"
               actions={
                 <Button variant="primary" onClick={backToParts}>
@@ -225,14 +225,14 @@ export default function ArchitecturePage() {
       ) : mode === 'list' ? (
         <div className="min-h-0 flex-1">
           <ModuleTable rows={rows} selectedId={selectedId} seenIds={seenModuleSet} onExplain={selectModule} onOpen={drillInto} />
-          <p className="mt-3 text-xs text-ink-3">
+          <p className="mt-3 text-xs leading-relaxed text-ink-3 tabular-nums">
             {pluralize(analysis.modules.length, 'part')} and {pluralize(connectionCount, 'connection')}. “Uses” counts the other parts a part relies on;
             “Used by” counts the parts that rely on it.
           </p>
         </div>
       ) : (
-        <section aria-label="Map of the project’s parts" className="flex min-h-[380px] flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
-          <div ref={mapBoxRef} className="relative min-h-[320px] flex-1">
+        <section aria-label="Map of the project’s parts" className="flex min-h-95 flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+          <div ref={mapBoxRef} className="relative min-h-80 flex-1">
             <ArchitectureGraph
               modules={analysis.modules}
               edges={analysis.moduleEdges}
@@ -251,20 +251,22 @@ export default function ArchitecturePage() {
                   variant="primary"
                   className="pointer-events-auto max-w-full shadow-md"
                   onClick={() => drillInto(selected.id)}
-                  icon={<FolderOpen className="size-4" aria-hidden />}
-                  iconRight={<ArrowRight className="size-4" aria-hidden />}
+                  icon={<FolderOpen className="size-4" strokeWidth={1.5} aria-hidden />}
+                  iconRight={<ArrowRight className="size-4" strokeWidth={1.5} aria-hidden />}
                 >
                   <span className="truncate">See the files in {selected.name}</span>
                 </Button>
               </div>
             )}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-line px-4 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-line px-4 py-3">
             {layers.length > 0 ? <LayerLegend layers={layers} /> : <span />}
-            <p className="text-xs text-ink-3">
-              {pluralize(analysis.modules.length, 'part')} · {pluralize(connectionCount, 'connection')}
-              <span className="max-sm:hidden"> · Double-click a box to see the files inside</span>
-              <span className="sm:hidden"> · Tap a box to learn about it</span>
+            <p className="flex flex-wrap items-baseline gap-x-2 text-xs text-ink-3">
+              <span className="text-meta">
+                {pluralize(analysis.modules.length, 'part')} · {pluralize(connectionCount, 'connection')}
+              </span>
+              <span className="max-sm:hidden">Double-click a box to see the files inside</span>
+              <span className="sm:hidden">Tap a box to learn about it</span>
             </p>
           </div>
         </section>

@@ -15,21 +15,22 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<ButtonVariant, string> = {
-  primary: 'bg-brand text-brand-ink hover:bg-brand-hover shadow-sm',
-  secondary: 'bg-surface text-ink border border-line-strong hover:bg-surface-2 shadow-sm',
+  // Primary is the ink itself (paper text on ink; off-white on dark) — quiet chrome, no colored button.
+  primary: 'bg-brand text-brand-ink hover:bg-brand-hover shadow-sm dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.12)]',
+  secondary: 'bg-surface text-ink border border-line-strong hover:bg-surface-2',
   ghost: 'text-ink-2 hover:text-ink hover:bg-surface-2',
-  subtle: 'bg-brand-soft text-brand-text hover:brightness-95 dark:hover:brightness-125',
+  subtle: 'bg-surface-2 text-ink hover:bg-surface-3',
   danger: 'bg-surface text-bad-text border border-line-strong hover:bg-surface-2',
 }
 
 const sizes: Record<ButtonSize, string> = {
-  sm: 'h-8 text-sm gap-1.5 rounded-lg',
-  md: 'h-10 text-sm gap-2 rounded-xl',
-  lg: 'h-12 text-base gap-2 rounded-xl',
+  sm: 'h-8 text-sm gap-1.5 rounded-md',
+  md: 'h-10 text-sm gap-2 rounded-lg',
+  lg: 'h-12 text-[15px] gap-2 rounded-[10px]',
 }
 
 /** Horizontal padding is kept separate so icon-only buttons don't fight over it. */
-const paddings: Record<ButtonSize, string> = { sm: 'px-3', md: 'px-4', lg: 'px-6' }
+const paddings: Record<ButtonSize, string> = { sm: 'px-3', md: 'px-4', lg: 'px-5' }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'secondary', size = 'md', square, icon, iconRight, loading, className, children, disabled, type = 'button', ...rest },
@@ -41,7 +42,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       disabled={disabled || loading}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center font-medium whitespace-nowrap transition-colors select-none',
+        'inline-flex shrink-0 items-center justify-center font-medium whitespace-nowrap select-none transition-[color,background-color,border-color,transform] duration-150 ease-atlas active:scale-[0.98] motion-reduce:active:scale-100',
         'disabled:cursor-not-allowed disabled:opacity-55',
         variants[variant],
         sizes[size],

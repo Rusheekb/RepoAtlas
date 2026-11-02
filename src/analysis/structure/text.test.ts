@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { plainText, readmeIntro } from './text'
+import { plainText, readmeIntro, sentence } from './text'
 
 describe('plainText', () => {
   it('keeps only the words of every kind of link', () => {
@@ -19,6 +19,21 @@ describe('plainText', () => {
     plainText('<!--'.repeat(50_000))
     plainText('**a'.repeat(50_000))
     expect(performance.now() - t0).toBeLessThan(1000)
+  })
+})
+
+describe('sentence', () => {
+  it('adds a full stop unless the text already ends a sentence', () => {
+    expect(sentence('The server starts here')).toBe('The server starts here.')
+    expect(sentence('Where does it begin?')).toBe('Where does it begin?')
+    expect(sentence('In the authors’ words: “A tiny shop”')).toBe('In the authors’ words: “A tiny shop”')
+    expect(sentence('  ')).toBe('')
+  })
+
+  it('ends a sentence that closes with a bracket, but not one whose bracket holds a full sentence', () => {
+    expect(sentence('Runs when you type "flask" in a terminal (pyproject.toml)')).toBe('Runs when you type "flask" in a terminal (pyproject.toml).')
+    expect(sentence('The program starts here (it has a main function).')).toBe('The program starts here (it has a main function).')
+    expect(sentence('It is optional. (See the tests.)')).toBe('It is optional. (See the tests.)')
   })
 })
 

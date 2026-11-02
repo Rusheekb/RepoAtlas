@@ -105,7 +105,7 @@ const LANGUAGES: LanguageInfo[] = [
     name: 'C++',
     description:
       'A powerful extension of C used where raw speed matters: games, web browsers, design software and trading systems.',
-    analogy: 'Like a race car workshop: incredible performance if you know exactly what you are doing.',
+    analogy: 'Like a race car workshop: top performance if you know exactly what you are doing.',
     url: 'https://isocpp.org',
   },
   {

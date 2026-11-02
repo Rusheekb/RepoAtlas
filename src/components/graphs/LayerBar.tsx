@@ -38,11 +38,11 @@ export function MiniLayerBar({ breakdown, className }: { breakdown: Partial<Reco
   const segments = useMemo(() => layerSegments(breakdown), [breakdown])
   if (!segments.length) return <div className={cn('h-1 w-full rounded-full bg-surface-3', className)} aria-hidden />
   return (
-    <div className={cn('flex h-1 w-full gap-[2px]', className)} aria-hidden>
+    <div className={cn('flex h-1 w-full gap-0.5', className)} aria-hidden>
       {segments.map((s, i) => (
         <span
           key={s.key}
-          className={cn('h-full min-w-[2px]', i === 0 && 'rounded-l-full', i === segments.length - 1 && 'rounded-r-full')}
+          className={cn('h-full min-w-0.5', i === 0 && 'rounded-l-full', i === segments.length - 1 && 'rounded-r-full')}
           style={{ flexGrow: s.value, flexBasis: 0, background: s.color }}
         />
       ))}

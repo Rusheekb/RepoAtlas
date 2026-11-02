@@ -1,4 +1,5 @@
 import { Moon, Sun } from 'lucide-react'
+import { Icon } from '@/components/ui/icons'
 import { IconButton } from './IconButton'
 import { useSettings } from '@/state/settings'
 import { useResolvedTheme } from './media'
@@ -15,7 +16,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       title={label}
       className={className}
       onClick={() => set({ theme: next })}
-      icon={resolved === 'dark' ? <Sun className="size-[18px]" aria-hidden /> : <Moon className="size-[18px]" aria-hidden />}
+      icon={<Icon as={resolved === 'dark' ? Sun : Moon} size={18} />}
     />
   )
 }

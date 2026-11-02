@@ -1,6 +1,6 @@
 import type { AnalyzedFile, CodeSymbol, RepoAnalysis, RouteInfo } from '@/core/types'
 import { ROOT_MODULE_ID } from '@/core/types'
-import { LAYER_INFO, ROLE_INFO } from '@/core/labels'
+import { LAYER_INFO, ROLE_INFO, VIEW_INFO } from '@/core/labels'
 import { formatCompact, formatNumber, formatPercent } from '@/core/format'
 import { basename } from '@/core/paths'
 import { isPeripheral, zonesOf } from './structure/zones'
@@ -617,7 +617,8 @@ function roleIsRedundant(role: string, name: string, description: string): boole
 
 /**
  * Heuristic plain-English overview of the whole project in Markdown (no AI). Sections:
- * "## What is this?", "## What it's built with", "## How it's organized", "## Where it starts", "## Good to know".
+ * "## What is this?", "## What it’s built with", "## How it’s organized", "## Where it starts", "## Good to know".
+ * Plain text only: no emoji (module emoji stay in the data, never in the prose), no exclamation marks.
  * Uses projectKind, techStack (with descriptions), modules (top ~6 with roles), entry points, stats, README first paragraph.
  * Friendly, concrete, 200–400 words.
  */
@@ -639,8 +640,8 @@ export function writeOverview(analysis: OverviewInput, options: OverviewOptions 
     out.push(`Why we think so:\n${kind.reasons.slice(0, 3).map((r) => `- ${escapeMd(r)}`).join('\n')}`)
   }
 
-  // What it's built with
-  out.push("## What it's built with")
+  // What it’s built with
+  out.push('## What it’s built with')
   const langs = analysis.languages.filter((l) => l.percent >= 3).slice(0, 4)
   if (langs.length > 0) {
     const [first, ...rest] = langs
@@ -664,8 +665,8 @@ export function writeOverview(analysis: OverviewInput, options: OverviewOptions 
   if (tooling.length > 0) out.push(`Behind the scenes it also uses helper tools like ${listJoin(tooling.slice(0, 4).map((t) => escapeMd(t.name)))}.`)
   if (langs.length === 0 && techs.length === 0) out.push('We didn’t find program code we recognise — it may be mostly documents, settings or data.')
 
-  // How it's organized
-  out.push("## How it's organized")
+  // How it’s organized
+  out.push('## How it’s organized')
   const mods = analysis.modules.filter((m) => m.id !== ROOT_MODULE_ID || m.role === 'Main code (top level)')
   const top = mods.slice(0, 6)
   if (top.length > 0) {
@@ -676,11 +677,11 @@ export function writeOverview(analysis: OverviewInput, options: OverviewOptions 
             const what = firstSentence(m.description)
             // "examples — examples: …" and "core — core logic: the central rules …" say the same thing twice.
             const role = roleIsRedundant(m.role, m.name, what) ? '' : `${escapeMd(lowerFirst(m.role))}: `
-            return `- ${m.emoji} **${escapeMd(m.name)}** — ${role}${escapeMdKeepCode(lowerFirst(what))}`
+            return `- **${escapeMd(m.name)}** — ${role}${escapeMdKeepCode(lowerFirst(what))}`
           })
           .join('\n'),
     )
-    out.push('Open **How It Connects** to see which parts rely on which.')
+    out.push(`Open **${VIEW_INFO.map.label}** to see which parts rely on which.`)
   } else {
     out.push('Everything sits together in one place, so there’s no bigger structure to map.')
   }
@@ -689,8 +690,8 @@ export function writeOverview(analysis: OverviewInput, options: OverviewOptions 
   out.push('## Where it starts')
   const entries = analysis.entryPoints.slice(0, 3)
   if (entries.length > 0) {
-    out.push(entries.map((p) => `- ${code(p)} — ${escapeMdKeepCode(analysis.files[p]?.entryReason ?? 'A likely starting point.')}`).join('\n'))
-    if (analysis.entryPoints.length > 3) out.push(`There are ${analysis.entryPoints.length - 3} more possible starting points — see **Read the Code**.`)
+    out.push(entries.map((p) => `- ${code(p)} — ${escapeMdKeepCode(sentence(analysis.files[p]?.entryReason ?? 'A likely starting point.'))}`).join('\n'))
+    if (analysis.entryPoints.length > 3) out.push(`There are ${analysis.entryPoints.length - 3} more possible starting points — see **${VIEW_INFO.explore.label}**.`)
   } else {
     out.push('There’s no single obvious starting point. That’s normal for libraries and collections: other projects use their pieces directly.')
   }

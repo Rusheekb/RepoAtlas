@@ -32,6 +32,7 @@ export interface ExampleRepo {
   repo: string
   name: string
   blurb: string
+  /** Kept for compatibility; the interface no longer renders emoji. */
   emoji: string
 }
 
@@ -41,6 +42,6 @@ export const EXAMPLE_REPOS: ExampleRepo[] = [
   { owner: 'pallets', repo: 'flask', name: 'Flask', blurb: 'A small Python web framework', emoji: '🧪' },
   { owner: 'gin-gonic', repo: 'gin', name: 'Gin', blurb: 'A fast web framework in Go', emoji: '🍸' },
   { owner: 'httpie', repo: 'cli', name: 'HTTPie', blurb: 'A friendly command-line tool', emoji: '⌨️' },
-  { owner: 'excalidraw', repo: 'excalidraw', name: 'Excalidraw', blurb: 'A virtual whiteboard (big!)', emoji: '✏️' },
+  { owner: 'excalidraw', repo: 'excalidraw', name: 'Excalidraw', blurb: 'A virtual whiteboard (a big one)', emoji: '✏️' },
   { owner: 'Rusheekb', repo: 'RepoAtlas', name: 'RepoAtlas itself', blurb: 'The code behind this very app', emoji: '🗺️' },
 ]

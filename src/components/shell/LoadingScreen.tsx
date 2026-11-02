@@ -2,17 +2,17 @@ import { useEffect, useState } from 'react'
 import { Check, ChevronLeft, ChevronRight, Lightbulb } from 'lucide-react'
 import { IconButton } from './IconButton'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import type { LoadProgress, LoadStage } from '@/core/types'
-import { LogoMark } from './Logo'
 import { BEGINNER_TIPS } from './tips'
 
 type VisibleStage = Exclude<LoadStage, 'done'>
 
-const STAGES: { id: VisibleStage; label: string; detail: string; emoji: string }[] = [
-  { id: 'meta', label: 'Looking up the project', detail: 'Who made it, what it’s called, how popular it is.', emoji: '🔎' },
-  { id: 'tree', label: 'Listing every file', detail: 'Like reading the table of contents first.', emoji: '🗂️' },
-  { id: 'files', label: 'Reading the important files', detail: 'Starting points, settings and the busiest code.', emoji: '📖' },
-  { id: 'analyze', label: 'Drawing the map', detail: 'Working out which parts depend on which.', emoji: '🗺️' },
+const STAGES: { id: VisibleStage; label: string; detail: string }[] = [
+  { id: 'meta', label: 'Looking up the project', detail: 'Who made it, what it’s called, how popular it is' },
+  { id: 'tree', label: 'Listing every file', detail: 'Like reading the table of contents first' },
+  { id: 'files', label: 'Reading the important files', detail: 'Starting points, settings and the busiest code' },
+  { id: 'analyze', label: 'Drawing the map', detail: 'Working out which parts depend on which' },
 ]
 
 /** Share of the overall bar each stage covers (files takes the longest). */
@@ -41,7 +41,7 @@ const TIP_INTERVAL_MS = 7000
  */
 export function announcement(progress: LoadProgress | null): string {
   if (!progress) return 'Getting started…'
-  if (progress.stage === 'done') return progress.message || 'Ready!'
+  if (progress.stage === 'done') return progress.message || 'Ready'
   if (progress.done != null && progress.total != null) {
     const stage = STAGES.find((s) => s.id === progress.stage)
     return stage ? `${stage.label}…` : progress.message
@@ -49,7 +49,7 @@ export function announcement(progress: LoadProgress | null): string {
   return progress.message
 }
 
-/** Shown while a repository downloads and is analyzed: stage list, live status, progress bar and rotating tips. */
+/** Shown while a repository downloads and is analyzed: live status, progress bar, stage list and rotating tips. */
 export function LoadingScreen({ progress, repoLabel }: { progress: LoadProgress | null; repoLabel: string }) {
   const stage: LoadStage = progress?.stage ?? 'meta'
   const currentIndex = stage === 'done' ? STAGES.length : STAGES.findIndex((s) => s.id === stage)
@@ -71,54 +71,55 @@ export function LoadingScreen({ progress, repoLabel }: { progress: LoadProgress 
   return (
     <div className="flex min-h-full items-start justify-center overflow-y-auto bg-canvas px-4 py-10 sm:items-center sm:py-16">
       <div className="w-full max-w-xl">
-        <div className="flex flex-col items-center text-center">
-          <LogoMark animated className="size-16 drop-shadow-sm" />
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-            Getting to know <span className="break-all text-brand-text">{repoLabel}</span>
-          </h1>
-          <p className="mt-2 text-sm text-ink-2">This usually takes a few seconds. Bigger projects take a little longer.</p>
-        </div>
+        <h1 className="text-page-title text-balance text-ink">
+          Getting to know <span className="break-all">{repoLabel}</span>
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-ink-2">This usually takes a few seconds. Bigger projects take a little longer.</p>
 
-        <div className="mt-8 rounded-2xl border border-line bg-surface p-5 shadow-sm sm:p-6">
+        <div className="mt-8 rounded-2xl border border-line bg-surface p-5 sm:p-6">
+          <div className="flex items-baseline justify-between gap-4">
+            <p className="min-h-5 min-w-0 text-sm leading-5 text-ink" aria-hidden data-testid="loading-message">
+              {progress?.message ?? 'Getting started…'}
+            </p>
+            <span className="shrink-0 text-meta" aria-hidden>
+              {percent}%
+            </span>
+          </div>
+          <p className="sr-only" role="status" aria-live="polite" data-testid="loading-announcement">
+            {announcement(progress)}
+          </p>
           <div
             role="progressbar"
             aria-label="Loading progress"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={percent}
-            className="h-2 w-full overflow-hidden rounded-full bg-surface-3"
+            className="mt-3 h-1 w-full overflow-hidden rounded-full bg-surface-3"
           >
-            <div className="h-full rounded-full bg-brand transition-[width] duration-500 ease-out" style={{ width: `${Math.max(4, percent)}%` }} />
+            <div
+              className="h-full w-full origin-left rounded-full bg-brand transition-transform duration-500 ease-atlas"
+              style={{ transform: `scaleX(${Math.max(4, percent) / 100})` }}
+            />
           </div>
-          <p className="mt-3 min-h-5 text-sm font-medium text-ink" aria-hidden data-testid="loading-message">
-            {progress?.message ?? 'Getting started…'}
-          </p>
-          <p className="sr-only" role="status" aria-live="polite" data-testid="loading-announcement">
-            {announcement(progress)}
-          </p>
 
-          <ol className="mt-5 space-y-3" aria-label="Steps">
+          <ol className="mt-6 space-y-3" aria-label="Steps">
             {STAGES.map((s, i) => {
               const state = i < currentIndex ? 'done' : i === currentIndex ? 'current' : 'todo'
               return (
                 <li key={s.id} className="flex items-start gap-3" aria-current={state === 'current' ? 'step' : undefined}>
-                  <span
-                    className={cn(
-                      'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border text-sm',
-                      state === 'done' && 'border-transparent bg-brand text-brand-ink',
-                      state === 'current' && 'border-brand bg-brand-soft',
-                      state === 'todo' && 'border-line bg-surface-2 opacity-70',
+                  <span className="flex h-5 w-4 shrink-0 items-center justify-center" aria-hidden>
+                    {state === 'done' ? (
+                      <Icon as={Check} className="text-ink-2" />
+                    ) : (
+                      <span className={cn('size-2 rounded-full', state === 'current' ? 'bg-ink' : 'border border-line-strong')} />
                     )}
-                    aria-hidden
-                  >
-                    {state === 'done' ? <Check className="size-4" /> : <span className={cn(state === 'current' && 'animate-atlas-pulse')}>{s.emoji}</span>}
                   </span>
                   <div className="min-w-0">
-                    <p className={cn('text-sm font-medium', state === 'todo' ? 'text-ink-3' : 'text-ink')}>
+                    <p className={cn('text-sm leading-5', state === 'current' ? 'font-medium text-ink' : state === 'done' ? 'text-ink-2' : 'text-ink-3')}>
                       {s.label}
                       <span className="sr-only">{state === 'done' ? ' (done)' : state === 'current' ? ' (in progress)' : ' (coming up)'}</span>
                     </p>
-                    <p className="text-xs text-ink-3">{s.detail}</p>
+                    <p className="text-[13px] leading-5 text-ink-3">{s.detail}</p>
                   </div>
                 </li>
               )
@@ -126,18 +127,18 @@ export function LoadingScreen({ progress, repoLabel }: { progress: LoadProgress 
           </ol>
         </div>
 
-        <aside className="mt-6 rounded-2xl border border-line bg-brand-soft/60 p-5" aria-label="Did you know?">
+        <aside className="mt-4 rounded-2xl border border-line bg-surface-2/60 p-5" aria-label="Did you know?">
           <div className="flex items-center justify-between gap-3">
-            <p className="flex items-center gap-2 text-xs font-semibold tracking-wide text-brand-text uppercase">
-              <Lightbulb className="size-4" aria-hidden />
+            <p className="flex items-center gap-2 text-sm font-medium text-ink-2">
+              <Icon as={Lightbulb} className="text-ink-3" />
               Did you know?
             </p>
-            <div className="flex items-center gap-1">
-              <IconButton size="sm" aria-label="Previous tip" onClick={() => step(-1)} icon={<ChevronLeft className="size-4" />} />
-              <IconButton size="sm" aria-label="Next tip" onClick={() => step(1)} icon={<ChevronRight className="size-4" />} />
+            <div className="-my-1 -mr-1 flex items-center gap-1">
+              <IconButton size="sm" aria-label="Previous tip" onClick={() => step(-1)} icon={<Icon as={ChevronLeft} />} />
+              <IconButton size="sm" aria-label="Next tip" onClick={() => step(1)} icon={<Icon as={ChevronRight} />} />
             </div>
           </div>
-          <p key={tip} className="mt-2 text-[15px] leading-relaxed text-ink motion-safe:animate-[atlas-fade-in_400ms_ease-out]">
+          <p key={tip} className="mt-3 text-[15px] leading-relaxed text-ink motion-safe:animate-[atlas-fade-in_300ms_cubic-bezier(0.22,1,0.36,1)]">
             {BEGINNER_TIPS[tip]}
           </p>
           <style>{'@keyframes atlas-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }'}</style>

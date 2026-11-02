@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Search, Sparkles, X } from 'lucide-react'
+import { ArrowRight, Lightbulb, Search, X } from 'lucide-react'
 import { useSearchParams } from 'react-router'
 import { ChipButton } from '@/components/shell/bits'
 import { GLOSSARY_CATEGORY_INFO, GLOSSARY_CATEGORY_ORDER } from '@/components/shell/labels'
 import { EmptyState } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import type { GlossaryCategory, GlossaryTerm } from '@/core/types'
 import { GLOSSARY, getTerm } from '@/knowledge'
 import { useExplain } from '@/state/explain'
@@ -55,34 +56,32 @@ function TermCard({
       tabIndex={-1}
       data-highlighted={highlighted || undefined}
       className={cn(
-        'flex scroll-mt-48 flex-col rounded-2xl border bg-surface p-5 shadow-sm transition-[box-shadow,border-color] duration-500 focus-visible:outline-hidden',
-        highlighted ? 'border-brand ring-4 ring-brand/25' : 'border-line',
+        'flex scroll-mt-48 flex-col rounded-2xl border bg-surface p-5 shadow-sm transition-[box-shadow,border-color] duration-300 ease-atlas focus-visible:outline-hidden',
+        // The word you jumped to is the selection: the accent, briefly.
+        highlighted ? 'border-accent ring-4 ring-accent-soft' : 'border-line',
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <h3 id={headingId} className="text-lg font-semibold tracking-tight text-ink">
+        <h3 id={headingId} className="text-lg leading-7 font-medium text-ink">
           {term.term}
         </h3>
-        <span className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-ink-3">
-          <span aria-hidden>{cat?.emoji}</span>
-          {cat?.label ?? term.category}
-        </span>
+        <span className="pt-1 text-xs leading-4 text-ink-3">{cat?.label ?? term.category}</span>
       </div>
-      {inProject && <p className="mt-0.5 text-xs font-medium text-brand-text">You’ll meet this word in this project</p>}
-      <p className="mt-2 text-[15px] leading-relaxed font-medium text-ink">{term.short}</p>
+      {inProject && <p className="mt-0.5 text-xs leading-4 text-ink-2">You’ll meet this word in this project</p>}
+      <p className="mt-3 text-[15px] leading-relaxed font-medium text-ink">{term.short}</p>
       <p className="mt-2 text-sm leading-relaxed text-ink-2">{term.long}</p>
       {term.analogy && (
-        <p className="mt-3 rounded-xl bg-surface-2 px-3.5 py-2.5 text-sm leading-relaxed text-ink">
-          <span aria-hidden>💡 </span>
-          {term.analogy}
+        <p className="mt-4 flex gap-2 rounded-lg bg-surface-2 p-3 text-sm leading-relaxed text-ink">
+          <Icon as={Lightbulb} className="mt-0.5 text-ink-3" />
+          <span>{term.analogy}</span>
         </p>
       )}
       <div className="mt-auto pt-4">
         {related.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-xs text-ink-3">Related:</span>
+            <span className="mr-1 text-xs text-ink-3">Related</span>
             {related.map((r) => (
-              <ChipButton key={r.id} onClick={() => onJump(r.id)} title={r.short} className="px-2.5 py-0.5 text-xs">
+              <ChipButton key={r.id} size="sm" onClick={() => onJump(r.id)} title={r.short}>
                 {r.term}
               </ChipButton>
             ))}
@@ -91,10 +90,10 @@ function TermCard({
         <button
           type="button"
           onClick={() => onExplain(term.id)}
-          className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-brand-text hover:underline"
+          className="mt-4 inline-flex items-center gap-1 rounded-sm text-sm font-medium text-ink underline-offset-4 hover:underline"
         >
-          <Sparkles className="size-3.5" aria-hidden />
           How is it used in this project?
+          <Icon as={ArrowRight} size={14} className="text-ink-3" />
         </button>
       </div>
     </article>
@@ -215,44 +214,44 @@ export default function GlossaryPage() {
   return (
     <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <header>
-        <h1 tabIndex={-1} className="flex items-center gap-3 text-3xl font-semibold tracking-tight text-ink outline-none">
-          <span aria-hidden>📘</span> Glossary
+        <h1 tabIndex={-1} className="text-page-title text-ink outline-none">
+          Glossary
         </h1>
-        <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-ink-2">
+        <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-ink-2">
           {GLOSSARY.length} technical words explained simply, each with an everyday comparison. Elsewhere in RepoAtlas, words with a dotted underline
           show their meaning when you point at them.
         </p>
       </header>
 
-      <div className="sticky top-0 z-10 -mx-4 mt-6 border-b border-line bg-canvas/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+      <div className="sticky top-0 z-10 -mx-4 mt-6 border-b border-line bg-canvas px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <div className="relative max-w-xl">
           <label htmlFor={searchId} className="sr-only">
             Search the glossary
           </label>
-          <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-ink-3" aria-hidden />
+          <Icon as={Search} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-3" />
           <input
             id={searchId}
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search words, like “API”"
+            placeholder="Search words"
             autoComplete="off"
             spellCheck={false}
-            className="h-11 w-full rounded-xl border border-line-strong bg-surface pr-10 pl-10 text-[15px] text-ink placeholder:text-ink-3 [&::-webkit-search-cancel-button]:hidden"
+            className="h-10 w-full rounded-lg border border-line-strong bg-surface pr-10 pl-9 text-sm text-ink transition-colors duration-150 ease-atlas placeholder:text-ink-3 hover:border-ink-3 [&::-webkit-search-cancel-button]:hidden"
           />
           {query && (
             <button
               type="button"
               onClick={() => setQuery('')}
               aria-label="Clear search"
-              className="absolute top-1/2 right-2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink"
+              className="absolute top-1/2 right-1.5 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded text-ink-3 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
             >
-              <X className="size-4" aria-hidden />
+              <Icon as={X} />
             </button>
           )}
         </div>
         <div
-          className="mt-3 -mb-1 flex gap-1.5 overflow-x-auto pr-8 pb-1 [mask-image:linear-gradient(to_right,black_calc(100%_-_3rem),transparent)]"
+          className="mt-3 -mb-1 flex gap-2 overflow-x-auto pr-8 pb-1 [mask-image:linear-gradient(to_right,black_calc(100%_-_3rem),transparent)]"
           role="group"
           aria-label="Filter by topic"
         >
@@ -261,9 +260,8 @@ export default function GlossaryPage() {
           </ChipButton>
           {GLOSSARY_CATEGORY_ORDER.filter((c) => counts.has(c)).map((c) => (
             <ChipButton key={c} onClick={() => setCategory(c)} active={category === c} className="shrink-0">
-              <span aria-hidden>{GLOSSARY_CATEGORY_INFO[c].emoji}</span>
               {GLOSSARY_CATEGORY_INFO[c].label}
-              <span className={cn('text-xs tabular-nums', category === c ? 'opacity-80' : 'text-ink-3')}>{counts.get(c)}</span>
+              <span className={cn('font-mono text-xs font-normal tabular-nums', category === c ? 'opacity-70' : 'text-ink-3')}>{counts.get(c)}</span>
             </ChipButton>
           ))}
         </div>
@@ -275,20 +273,20 @@ export default function GlossaryPage() {
 
       {projectTerms.length > 0 && (
         <section aria-labelledby="project-words-title" className="mt-8">
-          <h2 id="project-words-title" className="flex items-center gap-2.5 text-xl font-semibold tracking-tight text-ink">
-            <span aria-hidden>🔖</span> Words you’ll meet in this project
+          <h2 id="project-words-title" className="text-xl font-medium text-ink">
+            Words you’ll meet in this project
           </h2>
-          <p className="mt-1 text-[15px] text-ink-2">These come up in {analysis.meta.repo}. Start here.</p>
-          <ul className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+          <p className="mt-1 text-[15px] leading-6 text-ink-2">These come up in {analysis.meta.repo}. Start here.</p>
+          <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {shownProject.map((t) => (
               <li key={t.id}>
                 <button
                   type="button"
                   onClick={() => jumpTo(t.id)}
-                  className="group flex h-full w-full flex-col rounded-xl border border-line bg-surface px-4 py-3 text-left shadow-sm transition hover:border-line-strong hover:shadow-md"
+                  className="flex h-full w-full flex-col rounded-xl border border-line bg-surface px-4 py-3 text-left shadow-sm transition-colors duration-150 ease-atlas hover:border-line-strong"
                 >
-                  <span className="text-sm font-semibold text-ink group-hover:text-brand-text">{t.term}</span>
-                  <span className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-ink-2">{t.short}</span>
+                  <span className="text-sm leading-5 font-medium text-ink">{t.term}</span>
+                  <span className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-ink-2">{t.short}</span>
                 </button>
               </li>
             ))}
@@ -298,7 +296,7 @@ export default function GlossaryPage() {
               type="button"
               onClick={() => setShowAllProject((s) => !s)}
               aria-expanded={showAllProject}
-              className="mt-3 text-sm font-semibold text-brand-text hover:underline"
+              className="mt-4 text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-[text-decoration-color] duration-150 ease-atlas hover:decoration-ink-3"
             >
               {showAllProject ? 'Show fewer' : `Show all ${projectTerms.length} words from this project`}
             </button>
@@ -309,10 +307,10 @@ export default function GlossaryPage() {
       <section aria-labelledby="all-words-title" className="mt-12">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 id="all-words-title" className="flex items-center gap-2.5 text-xl font-semibold tracking-tight text-ink">
-              <span aria-hidden>🔤</span> {q ? 'Matching words' : 'All words, A to Z'}
+            <h2 id="all-words-title" className="text-xl font-medium text-ink">
+              {q ? 'Matching words' : 'All words, A to Z'}
             </h2>
-            <p className="mt-1 text-[15px] text-ink-2">
+            <p className="mt-1 text-meta">
               {filtered.length === GLOSSARY.length ? `${filtered.length} words` : `${filtered.length} of ${GLOSSARY.length} words`}
             </p>
           </div>
@@ -324,7 +322,7 @@ export default function GlossaryPage() {
                 key={g.letter}
                 type="button"
                 onClick={() => scrollToLetter(g.letter)}
-                className="inline-flex size-8 items-center justify-center rounded-lg text-sm font-semibold text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
+                className="inline-flex size-8 items-center justify-center rounded-md text-sm font-medium text-ink-2 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
                 aria-label={g.letter === '#' ? 'Jump to other symbols' : `Jump to ${g.letter}`}
               >
                 {g.letter}
@@ -335,7 +333,7 @@ export default function GlossaryPage() {
 
         {filtered.length === 0 ? (
           <EmptyState
-            icon="🔍"
+            icon={<Icon as={Search} size={18} />}
             title="No words match"
             actions={
               <button
@@ -344,20 +342,21 @@ export default function GlossaryPage() {
                   setQuery('')
                   setCategory('all')
                 }}
-                className="text-sm font-semibold text-brand-text hover:underline"
+                className="text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-[text-decoration-color] duration-150 ease-atlas hover:decoration-ink-3"
               >
                 Show all words
               </button>
             }
           >
-            Try a shorter or different word. If a word isn’t here, the “Ask a Question” view can explain it.
+            Try a shorter or different word. If a word isn’t here, the “Ask a question” view can explain it.
           </EmptyState>
         ) : (
           groups.map((g) => (
             <div key={g.letter || 'results'} className="mt-6">
               {g.letter && (
-                <h3 id={`letter-${g.letter}`} className="mb-3 scroll-mt-48 text-sm font-semibold text-ink-3">
+                <h3 id={`letter-${g.letter}`} className="mb-3 flex scroll-mt-48 items-center gap-3 text-sm font-medium text-ink-3">
                   {g.letter}
+                  <span className="h-px flex-1 bg-line" aria-hidden />
                 </h3>
               )}
               <div className="grid gap-4 md:grid-cols-2">

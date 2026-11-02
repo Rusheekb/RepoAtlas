@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { Check, Eye, EyeOff, KeyRound, Laptop, LoaderCircle, Moon, ShieldCheck, SlidersHorizontal, Sparkles, Sun, Trash2, X } from 'lucide-react'
+import { Check, CreditCard, Eye, EyeOff, KeyRound, Laptop, LoaderCircle, MessagesSquare, Moon, ShieldCheck, SlidersHorizontal, Sun, Trash2, X } from 'lucide-react'
+import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { Icon } from '@/components/ui/icons'
 import { IconButton } from '@/components/shell/IconButton'
 import { cn } from '@/components/ui/cn'
 import { Callout, GitHubMark, OutboundLink } from '@/components/shell/bits'
@@ -18,10 +20,10 @@ export const ANTHROPIC_KEYS_URL = 'https://console.anthropic.com/settings/keys'
 export const GITHUB_TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new'
 
 const SECTIONS: { id: SettingsSection; label: string; icon: ReactNode }[] = [
-  { id: 'ai', label: 'Claude AI', icon: <Sparkles className="size-4" aria-hidden /> },
+  { id: 'ai', label: 'Claude AI', icon: <Icon as={MessagesSquare} /> },
   { id: 'github', label: 'GitHub', icon: <GitHubMark className="size-4" /> },
-  { id: 'preferences', label: 'Preferences', icon: <SlidersHorizontal className="size-4" aria-hidden /> },
-  { id: 'data', label: 'Privacy & data', icon: <ShieldCheck className="size-4" aria-hidden /> },
+  { id: 'preferences', label: 'Preferences', icon: <Icon as={SlidersHorizontal} /> },
+  { id: 'data', label: 'Privacy & data', icon: <Icon as={ShieldCheck} /> },
 ]
 
 /*
@@ -88,15 +90,15 @@ function ChoiceCards<T extends string>({
   const name = useId()
   return (
     <fieldset className="min-w-0">
-      <legend className="text-sm font-semibold text-ink">{legend}</legend>
-      {hint && <p className="mt-0.5 text-sm leading-relaxed text-ink-2">{hint}</p>}
+      <legend className="text-sm leading-5 font-medium text-ink">{legend}</legend>
+      {hint && <p className="mt-1 text-sm leading-relaxed text-ink-2">{hint}</p>}
       <div className={cn('mt-3 grid gap-2', columns === 2 && 'sm:grid-cols-2', columns === 3 && 'sm:grid-cols-3')}>
         {options.map((o) => (
           <label
             key={o.value}
             className={cn(
-              'flex min-w-0 cursor-pointer gap-3 rounded-xl border bg-surface px-3.5 py-3 transition-colors',
-              o.value === value ? 'border-brand bg-brand-soft/50' : 'border-line hover:border-line-strong',
+              'flex min-w-0 cursor-pointer gap-2.5 rounded-[10px] border px-3 py-3 transition-colors duration-150 ease-atlas',
+              o.value === value ? 'border-ink-3 bg-brand-soft' : 'border-line bg-surface hover:border-line-strong',
             )}
           >
             <input
@@ -108,18 +110,14 @@ function ChoiceCards<T extends string>({
               className="mt-0.5 size-4 shrink-0 accent-brand"
             />
             <span className="min-w-0">
-              <span className="flex items-center gap-2 text-sm font-medium text-ink">
+              <span className="flex items-center gap-2 text-sm leading-5 font-medium text-ink">
                 {o.icon}
-                <span className="min-w-0">
+                <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                   {o.label}
-                  {o.badge && (
-                    <span className="ml-2 inline-block rounded-full bg-brand px-2 py-0.5 align-[1px] text-[10px] font-semibold tracking-wide text-brand-ink uppercase">
-                      {o.badge}
-                    </span>
-                  )}
+                  {o.badge && <Badge>{o.badge}</Badge>}
                 </span>
               </span>
-              {o.description && <span className="mt-0.5 block text-xs leading-snug text-ink-2">{o.description}</span>}
+              {o.description && <span className="mt-0.5 block text-[13px] leading-5 text-ink-2">{o.description}</span>}
             </span>
           </label>
         ))}
@@ -156,10 +154,10 @@ function SecretField({
         onSubmit?.()
       }}
     >
-      <label htmlFor={id} className="text-sm font-semibold text-ink">
+      <label htmlFor={id} className="text-sm leading-5 font-medium text-ink">
         {label}
       </label>
-      <div className="mt-1.5 flex flex-col gap-2 sm:flex-row">
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
         <div className="relative min-w-0 flex-1">
           <input
             id={id}
@@ -173,26 +171,26 @@ function SecretField({
             data-1p-ignore
             data-lpignore="true"
             aria-describedby={hint ? hintId : undefined}
-            className="h-11 w-full rounded-xl border border-line-strong bg-surface pr-20 pl-3.5 font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink-3"
+            className="h-10 w-full rounded-lg border border-line-strong bg-surface pr-20 pl-3 font-mono text-sm text-ink transition-colors duration-150 ease-atlas placeholder:font-sans placeholder:text-ink-3 focus-visible:border-ink-3 dark:bg-surface-2"
           />
-          <div className="absolute inset-y-0 right-1.5 flex items-center gap-0.5">
+          <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
             <IconButton
               size="sm"
               aria-label={show ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
               aria-pressed={show}
               title={show ? 'Hide' : 'Show'}
               onClick={() => setShow((s) => !s)}
-              icon={show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              icon={<Icon as={show ? EyeOff : Eye} />}
             />
             {value && (
-              <IconButton size="sm" aria-label={`Remove ${label.toLowerCase()}`} title="Remove" onClick={() => onChange('')} icon={<X className="size-4" />} />
+              <IconButton size="sm" aria-label={`Remove ${label.toLowerCase()}`} title="Remove" onClick={() => onChange('')} icon={<Icon as={X} />} />
             )}
           </div>
         </div>
         {children}
       </div>
       {hint && (
-        <div id={hintId} className="mt-2 text-xs leading-relaxed text-ink-3">
+        <div id={hintId} className="mt-2 text-[13px] leading-5 text-ink-3">
           {hint}
         </div>
       )}
@@ -203,7 +201,7 @@ function SecretField({
 function SectionIntro({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
-      <h3 className="text-lg font-semibold tracking-tight text-ink">{title}</h3>
+      <h3 className="text-lg leading-7 font-medium text-ink">{title}</h3>
       <div className="mt-1 text-sm leading-relaxed text-ink-2">{children}</div>
     </div>
   )
@@ -266,17 +264,16 @@ function AiSection() {
           <Button
             type="submit"
             variant="secondary"
-            className="h-11"
             disabled={!apiKey || test.state === 'testing'}
-            icon={test.state === 'testing' ? <LoaderCircle className="size-4 motion-safe:animate-spin" aria-hidden /> : <KeyRound className="size-4" aria-hidden />}
+            icon={test.state === 'testing' ? <Icon as={LoaderCircle} className="motion-safe:animate-spin" /> : <Icon as={KeyRound} />}
           >
             {test.state === 'testing' ? 'Testing…' : 'Test key'}
           </Button>
         </SecretField>
         <div role="status" aria-live="polite" className="mt-2 text-sm">
           {test.state === 'ok' && (
-            <p className="flex items-start gap-1.5 text-good-text">
-              <Check className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <p className="flex items-start gap-2 text-good-text">
+              <Icon as={Check} className="mt-0.5" />
               {test.message}
             </p>
           )}
@@ -307,7 +304,7 @@ function AiSection() {
         })}
       />
 
-      <Callout icon={<span aria-hidden>💳</span>} title="What does it cost?">
+      <Callout icon={<Icon as={CreditCard} />} title="What does it cost?">
         You pay Anthropic directly for what you use; RepoAtlas never sees your bill. With Opus and “Balanced”, the first answer about a
         project costs about 40¢, because Claude reads the code first. Follow-up answers within the hour cost roughly 5–10¢ each, since
         Claude remembers that code for an hour. Sonnet and Haiku cost less, and so does “Light”. Answers are saved on this device, so
@@ -336,7 +333,7 @@ function RateLimitMeter({ info, hasToken }: { info: RateLimitInfo | null; hasTok
           <span className="tabular-nums">{info.remaining.toLocaleString('en-US')}</span> of{' '}
           <span className="tabular-nums">{info.limit.toLocaleString('en-US')}</span> requests left this hour
         </p>
-        <p className="text-xs text-ink-3">Refills at {formatResetTime(info.resetAt)}</p>
+        <p className="text-meta">Refills at {formatResetTime(info.resetAt)}</p>
       </div>
       <div
         role="progressbar"
@@ -344,14 +341,17 @@ function RateLimitMeter({ info, hasToken }: { info: RateLimitInfo | null; hasTok
         aria-valuemin={0}
         aria-valuemax={info.limit}
         aria-valuenow={info.remaining}
-        className="mt-2 h-2 overflow-hidden rounded-full bg-surface-3"
+        className="mt-2 h-1 overflow-hidden rounded-full bg-surface-3"
       >
-        <div className={cn('h-full rounded-full transition-[width] duration-500', low ? 'bg-warn' : 'bg-brand')} style={{ width: `${percent}%` }} />
+        <div
+          className={cn('h-full w-full origin-left rounded-full transition-transform duration-500 ease-atlas', low ? 'bg-warn' : 'bg-brand')}
+          style={{ transform: `scaleX(${percent / 100})` }}
+        />
       </div>
       {hasToken && info.limit <= 60 && (
-        <p className="mt-2 text-xs text-ink-3">Your token will be used from the next project you open (or when you press “Try again”).</p>
+        <p className="mt-2 text-[13px] leading-5 text-ink-3">Your token will be used from the next project you open (or when you press “Try again”)</p>
       )}
-      {low && <p className="mt-2 text-xs text-warn-text">Running low. {hasToken ? 'It refills on the hour.' : 'A free token raises the limit to 5,000 an hour.'}</p>}
+      {low && <p className="mt-2 text-[13px] leading-5 text-warn-text">Running low. {hasToken ? 'It refills on the hour.' : 'A free token raises the limit to 5,000 an hour.'}</p>}
     </div>
   )
 }
@@ -364,14 +364,14 @@ function GitHubSection() {
     <div className="space-y-6">
       <SectionIntro title="GitHub token (optional)">
         <p>
-          RepoAtlas reads projects straight from GitHub. Without a token, GitHub allows about <strong className="text-ink">60 requests an hour</strong>,
-          enough for a handful of projects. A free token raises that to <strong className="text-ink">5,000 an hour</strong>, and lets you explore your
+          RepoAtlas reads projects straight from GitHub. Without a token, GitHub allows about <strong className="font-medium text-ink">60 requests an hour</strong>,
+          enough for a handful of projects. A free token raises that to <strong className="font-medium text-ink">5,000 an hour</strong>, and lets you explore your
           own private projects too.
         </p>
       </SectionIntro>
 
-      <div className="rounded-2xl border border-line bg-surface-2/60 p-4">
-        <p className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">Your GitHub allowance</p>
+      <div className="rounded-xl border border-line bg-surface-2/60 p-4">
+        <p className="mb-2 text-sm leading-5 font-medium text-ink">Your GitHub allowance</p>
         <RateLimitMeter info={info} hasToken={Boolean(token)} />
       </div>
 
@@ -384,8 +384,8 @@ function GitHubSection() {
       />
 
       <div>
-        <h4 className="text-sm font-semibold text-ink">How to get a token (about a minute)</h4>
-        <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-ink-2 marker:text-ink-3">
+        <h4 className="text-sm leading-5 font-medium text-ink">How to get a token (about a minute)</h4>
+        <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-ink-2 marker:text-ink-3">
           <li>
             Open <OutboundLink href={GITHUB_TOKEN_URL}>GitHub’s “new token” page</OutboundLink> (sign in if asked).
           </li>
@@ -430,9 +430,9 @@ function PreferencesSection() {
         columns={3}
         onChange={(v) => set({ theme: v })}
         options={[
-          { value: 'system', label: 'Match my device', icon: <Laptop className="size-4 shrink-0 text-ink-2" aria-hidden /> },
-          { value: 'light', label: 'Light', icon: <Sun className="size-4 shrink-0 text-ink-2" aria-hidden /> },
-          { value: 'dark', label: 'Dark', icon: <Moon className="size-4 shrink-0 text-ink-2" aria-hidden /> },
+          { value: 'system', label: 'Match my device', icon: <Icon as={Laptop} className="text-ink-3" /> },
+          { value: 'light', label: 'Light', icon: <Icon as={Sun} className="text-ink-3" /> },
+          { value: 'dark', label: 'Dark', icon: <Icon as={Moon} className="text-ink-3" /> },
         ]}
       />
       <ChoiceCards<AnalysisDepth>
@@ -492,7 +492,7 @@ function DataSection() {
             'Your keys stay in this browser and are only ever sent to GitHub and Anthropic.',
           ].map((t) => (
             <li key={t} className="flex items-start gap-2">
-              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-good-text" aria-hidden />
+              <Icon as={ShieldCheck} className="mt-0.5 text-ink-3" />
               <span>{t}</span>
             </li>
           ))}
@@ -507,10 +507,10 @@ function DataSection() {
         </p>
       )}
 
-      <div className="rounded-2xl border border-line p-4">
+      <div className="rounded-xl border border-line p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <label htmlFor={switchId} className="text-sm font-semibold text-ink">
+            <label htmlFor={switchId} className="text-sm leading-5 font-medium text-ink">
               Remember my keys on this device
             </label>
             <p id={switchHint} className="mt-1 text-sm leading-relaxed text-ink-2">
@@ -526,10 +526,16 @@ function DataSection() {
             aria-checked={rememberKeys}
             aria-describedby={switchHint}
             onClick={toggleRemember}
-            className={cn('relative mt-0.5 inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors', rememberKeys ? 'border-transparent bg-brand' : 'border-line-strong bg-surface-3')}
+            className={cn(
+              'relative inline-flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-colors duration-150 ease-atlas',
+              rememberKeys ? 'bg-brand' : 'bg-surface-3 ring-1 ring-line-strong ring-inset',
+            )}
           >
             <span
-              className={cn('inline-block size-5 rounded-full shadow-sm transition-transform', rememberKeys ? 'translate-x-[22px] bg-brand-ink' : 'translate-x-[3px] bg-ink-3')}
+              className={cn(
+                'inline-block size-5 rounded-full shadow-sm transition-[transform,background-color] duration-150 ease-atlas',
+                rememberKeys ? 'translate-x-4 bg-brand-ink' : 'translate-x-0 bg-ink-3',
+              )}
               aria-hidden
             />
             <span className="sr-only">{rememberKeys ? 'On' : 'Off'}</span>
@@ -540,7 +546,7 @@ function DataSection() {
             size="sm"
             variant="ghost"
             className="mt-3 -ml-2"
-            icon={<X className="size-4" aria-hidden />}
+            icon={<Icon as={X} />}
             onClick={forgetKeys}
           >
             Forget my keys now
@@ -548,20 +554,20 @@ function DataSection() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-line p-4">
-        <h4 className="text-sm font-semibold text-ink">Saved data</h4>
+      <div className="rounded-xl border border-line p-4">
+        <h4 className="text-sm leading-5 font-medium text-ink">Saved data</h4>
         <p className="mt-1 text-sm leading-relaxed text-ink-2">
           To make things fast and save money, RepoAtlas keeps copies of projects you’ve opened, Claude’s answers, your progress and your
           recent projects in this browser. Your settings and keys are kept separately.
         </p>
         <div className="mt-3" aria-live="polite">
           {clearState === 'idle' && (
-            <Button size="sm" variant="danger" icon={<Trash2 className="size-4" aria-hidden />} onClick={() => setClearState('confirm')}>
+            <Button size="sm" variant="danger" icon={<Icon as={Trash2} />} onClick={() => setClearState('confirm')}>
               Clear saved data
             </Button>
           )}
           {(clearState === 'confirm' || clearState === 'working') && (
-            <div className="rounded-xl bg-surface-2 p-3">
+            <div className="rounded-lg bg-surface-2 p-3">
               <p className="text-sm text-ink">This removes saved projects, Claude’s saved answers and your progress from this device. It can’t be undone.</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" variant="danger" loading={clearState === 'working'} onClick={() => void doClear()}>
@@ -574,8 +580,8 @@ function DataSection() {
             </div>
           )}
           {clearState === 'done' && (
-            <p className="flex items-center gap-1.5 text-sm font-medium text-good-text">
-              <Check className="size-4" aria-hidden /> All clear. Saved projects, answers and progress were removed.
+            <p className="flex items-center gap-2 text-sm text-good-text">
+              <Icon as={Check} /> All clear. Saved projects, answers and progress were removed.
             </p>
           )}
         </div>
@@ -612,19 +618,19 @@ function SettingsContent({ initial, onClose }: { initial: SettingsSection; onClo
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-3 border-b border-line px-5 py-4 sm:px-6">
         <div className="min-w-0 flex-1">
-          <h2 id={`${baseId}-title`} className="text-lg font-semibold text-ink">
+          <h2 id={`${baseId}-title`} className="text-lg leading-7 font-medium text-ink">
             Settings
           </h2>
-          <p className="text-sm text-ink-2">Changes are saved as you go.</p>
+          <p className="text-sm leading-5 text-ink-2">Changes are saved as you go</p>
         </div>
-        <IconButton aria-label="Close settings" size="sm" onClick={onClose} icon={<X className="size-4" />} />
+        <IconButton aria-label="Close settings" onClick={onClose} icon={<Icon as={X} size={18} />} />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
         <div
           role="tablist"
           aria-label="Settings sections"
-          className="grid shrink-0 grid-cols-2 gap-1 border-b border-line px-3 py-2 sm:flex sm:w-52 sm:flex-col sm:border-r sm:border-b-0 sm:py-4"
+          className="grid shrink-0 grid-cols-2 gap-1 border-b border-line p-2 sm:flex sm:w-52 sm:flex-col sm:border-r sm:border-b-0 sm:px-3 sm:py-4"
         >
           {SECTIONS.map((s, i) => {
             const active = s.id === section
@@ -644,11 +650,11 @@ function SettingsContent({ initial, onClose }: { initial: SettingsSection; onClo
                 onClick={() => setSection(s.id)}
                 onKeyDown={(e) => onTabKey(e, i)}
                 className={cn(
-                  'flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm whitespace-nowrap transition-colors',
-                  active ? 'bg-brand-soft font-semibold text-brand-text' : 'font-medium text-ink-2 hover:bg-surface-2 hover:text-ink',
+                  'flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-left text-sm font-medium whitespace-nowrap transition-colors duration-150 ease-atlas',
+                  active ? 'bg-brand-soft text-ink shadow-[inset_0_0_0_1px_var(--line)]' : 'text-ink-2 hover:bg-surface-2 hover:text-ink',
                 )}
               >
-                {s.icon}
+                <span className={cn('flex w-4 justify-center', active ? 'text-ink' : 'text-ink-3')}>{s.icon}</span>
                 {s.label}
               </button>
             )
@@ -660,7 +666,7 @@ function SettingsContent({ initial, onClose }: { initial: SettingsSection; onClo
           role="tabpanel"
           id={`${baseId}-panel`}
           aria-labelledby={`${baseId}-tab-${section}`}
-          className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-7"
+          className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8"
           data-testid={`settings-${section}`}
         >
           {SECTION_BODY[section]()}
@@ -668,7 +674,7 @@ function SettingsContent({ initial, onClose }: { initial: SettingsSection; onClo
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3 sm:px-6">
-        <p className="text-xs text-ink-3">Stored only in this browser.</p>
+        <p className="text-[13px] leading-5 text-ink-3">Stored only in this browser</p>
         <Button variant="primary" onClick={onClose}>
           Done
         </Button>
@@ -709,7 +715,7 @@ export function SettingsDialog() {
       onClick={(e) => {
         if (e.target === ref.current) closeSettings()
       }}
-      className="m-auto h-[min(720px,calc(100dvh-1rem))] max-h-none w-[min(860px,calc(100vw-1rem))] max-w-none overflow-hidden rounded-2xl border border-line bg-surface p-0 text-ink shadow-lg backdrop:bg-black/45 backdrop:backdrop-blur-[2px] sm:h-[min(720px,calc(100dvh-3rem))] sm:w-[min(860px,calc(100vw-3rem))]"
+      className="m-auto h-[min(720px,calc(100dvh-1rem))] max-h-none w-[min(860px,calc(100vw-1rem))] max-w-none overflow-hidden rounded-2xl border border-line bg-surface p-0 text-ink shadow-lg backdrop:bg-black/45 sm:h-[min(720px,calc(100dvh-3rem))] sm:w-[min(860px,calc(100vw-3rem))]"
     >
       {open && <SettingsContent key={section} initial={section} onClose={closeSettings} />}
     </dialog>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { Check, ClipboardCopy, KeyRound, RefreshCw, Settings, Sparkles, Square } from 'lucide-react'
+import { Check, ClipboardCopy, KeyRound, PenLine, RefreshCw, Settings, Square } from 'lucide-react'
 import { useCopyPrompt, useExplanation, useHasAiKey, type AiRunState, type AiStatus, type ExplainTask } from '@/ai'
 import { Button, Markdown } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import { OutboundLink } from '@/components/shell/bits'
 import { normalizeCodeRef } from '@/components/shell/urls'
 import { useExplain } from '@/state/explain'
@@ -56,7 +57,7 @@ async function copyText(text: string): Promise<boolean> {
   return false
 }
 
-/** "Copy a ready-made prompt" button with "Copied!" feedback, and a manual-copy fallback when the clipboard is blocked. */
+/** "Copy a ready-made prompt" button with "Copied" feedback, and a manual-copy fallback when the clipboard is blocked. */
 export function CopyPromptButton({ task, size = 'md' }: { task: ExplainTask; size?: 'sm' | 'md' }) {
   const buildPrompt = useCopyPrompt()
   const [status, setStatus] = useState<'idle' | 'working' | 'copied' | 'manual' | 'error'>('idle')
@@ -89,9 +90,9 @@ export function CopyPromptButton({ task, size = 'md' }: { task: ExplainTask; siz
         variant="secondary"
         onClick={() => void copy()}
         loading={status === 'working'}
-        icon={status === 'copied' ? <Check className="size-4 text-good-text" aria-hidden /> : <ClipboardCopy className="size-4" aria-hidden />}
+        icon={status === 'copied' ? <Icon as={Check} /> : <Icon as={ClipboardCopy} />}
       >
-        {status === 'copied' ? 'Copied!' : 'Copy a ready-made prompt'}
+        {status === 'copied' ? 'Copied' : 'Copy a ready-made prompt'}
       </Button>
       <span className="sr-only" role="status" aria-live="polite">
         {status === 'copied' ? 'Prompt copied to your clipboard' : ''}
@@ -107,7 +108,7 @@ export function CopyPromptButton({ task, size = 'md' }: { task: ExplainTask; siz
             readOnly
             value={manualText}
             onFocus={(e) => e.currentTarget.select()}
-            className="mt-2 h-32 w-full resize-y rounded-xl border border-line-strong bg-surface-2 p-3 font-mono text-xs text-ink"
+            className="mt-2 h-32 w-full resize-y rounded-lg border border-line-strong bg-surface-2 p-3 font-mono text-xs text-ink"
           />
         </div>
       )}
@@ -124,8 +125,8 @@ function NoKeyCard({ task, compact }: { task: ExplainTask; compact?: boolean }) 
         Claude, an AI assistant, can read the actual code and explain this in depth, at your reading level. Add your own Claude API key
         to ask right here, or copy a ready-made prompt and paste it into Claude yourself.
       </p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button size={compact ? 'sm' : 'md'} variant="primary" icon={<KeyRound className="size-4" aria-hidden />} onClick={() => openSettings('ai')}>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Button size={compact ? 'sm' : 'md'} variant="primary" icon={<Icon as={KeyRound} />} onClick={() => openSettings('ai')}>
           Add your Claude API key
         </Button>
         <CopyPromptButton task={task} size={compact ? 'sm' : 'md'} />
@@ -139,9 +140,9 @@ function NoKeyCard({ task, compact }: { task: ExplainTask; compact?: boolean }) 
 
 function Skeleton() {
   return (
-    <div className="space-y-2.5 pt-1" aria-hidden>
+    <div className="space-y-3 pt-1" aria-hidden>
       {[92, 100, 84, 68].map((w, i) => (
-        <div key={i} className="h-3 rounded-full bg-surface-3 motion-safe:animate-pulse" style={{ width: `${w}%` }} />
+        <div key={i} className="h-3 rounded bg-surface-3 motion-safe:animate-atlas-pulse" style={{ width: `${w}%` }} />
       ))}
     </div>
   )
@@ -183,20 +184,16 @@ export function AiAnswer(props: AiAnswerProps) {
       aria-busy={busy || undefined}
       data-testid="ai-answer"
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h3 className={cn('flex min-w-0 items-center gap-2 font-semibold text-ink', compact ? 'text-sm' : 'text-base')}>
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand-text" aria-hidden>
-            <Sparkles className="size-4" />
-          </span>
-          {title}
-        </h3>
-        <p role="status" aria-live="polite" className="ml-auto flex items-center gap-1.5 text-xs font-medium text-ink-3" data-testid="ai-status">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 className={cn('min-w-0 font-medium text-ink', compact ? 'text-sm' : 'text-base')}>{title}</h3>
+        <p role="status" aria-live="polite" className="ml-auto flex items-center gap-1.5 text-xs text-ink-3" data-testid="ai-status">
           {status && (
             <>
               {busy ? (
-                <span className="size-2 rounded-full bg-brand motion-safe:animate-pulse" aria-hidden />
+                // Live: Claude is reading or writing right now.
+                <span className="size-1.5 rounded-full bg-ink-2 motion-safe:animate-atlas-pulse" aria-hidden />
               ) : (
-                <Check className="size-3.5 text-good-text" aria-hidden />
+                <Icon as={Check} size={14} />
               )}
               <span title={fromCache && !busy ? 'Saved on this device, so showing it again is instant and free.' : undefined}>{status}</span>
             </>
@@ -204,7 +201,7 @@ export function AiAnswer(props: AiAnswerProps) {
         </p>
       </div>
 
-      <div className="mt-3">
+      <div className={hasText ? 'mt-4' : 'mt-2'}>
         {showNoKey ? (
           <NoKeyCard task={task} compact={compact} />
         ) : state === 'idle' && !hasText ? (
@@ -212,7 +209,7 @@ export function AiAnswer(props: AiAnswerProps) {
             <p className="text-sm leading-relaxed text-ink-2">
               {pitch ?? 'Claude will read the actual code and explain it at your reading level, with links to the files it mentions.'}
             </p>
-            <Button className="mt-3" size={compact ? 'sm' : 'md'} variant="primary" icon={<Sparkles className="size-4" aria-hidden />} onClick={run}>
+            <Button className="mt-4" size={compact ? 'sm' : 'md'} variant="primary" icon={<Icon as={PenLine} />} onClick={run}>
               {cta}
             </Button>
           </div>
@@ -239,27 +236,31 @@ export function AiAnswer(props: AiAnswerProps) {
       {(busy || state === 'done' || (state === 'error' && !showNoKey)) && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {busy && (
-            <Button size="sm" variant="secondary" icon={<Square className="size-3.5" aria-hidden />} onClick={cancel}>
+            <Button size="sm" variant="secondary" icon={<Icon as={Square} size={14} />} onClick={cancel}>
               Stop
             </Button>
           )}
           {state === 'error' && errorKind && SETTINGS_ERRORS.has(errorKind) && (
-            <Button size="sm" variant="primary" icon={<Settings className="size-4" aria-hidden />} onClick={() => openSettings('ai')}>
+            <Button size="sm" variant="primary" icon={<Icon as={Settings} />} onClick={() => openSettings('ai')}>
               Open Settings
             </Button>
           )}
           {state === 'error' && hasKey && (
-            <Button size="sm" variant="secondary" icon={<RefreshCw className="size-3.5" aria-hidden />} onClick={run}>
+            <Button size="sm" variant="secondary" icon={<Icon as={RefreshCw} />} onClick={run}>
               Try again
             </Button>
           )}
           {state === 'done' && hasKey && (
-            <Button size="sm" variant="ghost" icon={<RefreshCw className="size-3.5" aria-hidden />} onClick={run} title="Ask Claude to write a fresh answer">
+            <Button size="sm" variant="ghost" icon={<Icon as={RefreshCw} />} onClick={run} title="Ask Claude to write a fresh answer">
               Regenerate
             </Button>
           )}
           {state === 'done' && !hasKey && (
-            <button type="button" onClick={() => openSettings('ai')} className="text-xs font-medium text-brand-text hover:underline">
+            <button
+              type="button"
+              onClick={() => openSettings('ai')}
+              className="text-xs text-ink-2 underline decoration-line-strong underline-offset-4 transition-[text-decoration-color] duration-150 ease-atlas hover:decoration-ink-3"
+            >
               Add a Claude key to write a fresh answer
             </button>
           )}

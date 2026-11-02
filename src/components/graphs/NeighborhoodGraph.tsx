@@ -2,6 +2,8 @@ import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ArrowDown } from 'lucide-react'
 import { LayerLegend } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { Icon, LayerDot } from '@/components/ui/icons'
+import { YouAreHerePin } from '@/components/ui/YouAreHere'
 import { formatBytes, formatNumber, pluralize } from '@/core/format'
 import { LAYER_INFO, ROLE_INFO } from '@/core/labels'
 import { basename, dirname } from '@/core/paths'
@@ -32,26 +34,24 @@ interface Connector {
   d: string
 }
 
+/** The layer key to draw, tolerating unexpected values. */
+const layerOf = (file: AnalyzedFile) => (file.layer in LAYER_INFO ? file.layer : 'other')
+
 function Chip({ file, onSelect, chipRef }: { file: AnalyzedFile; onSelect?: (path: string) => void; chipRef?: (el: HTMLElement | null) => void }) {
   const role = ROLE_INFO[file.role] ?? ROLE_INFO.other
-  const layer = LAYER_INFO[file.layer] ?? LAYER_INFO.other
   const body = (
     <>
-      <span className="shrink-0 text-sm leading-none" aria-hidden>
-        {file.isEntry ? ROLE_INFO.entry.emoji : role.emoji}
-      </span>
+      <LayerDot layer={layerOf(file)} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-medium text-ink">{basename(file.path)}</span>
-        <span className="block truncate text-[11px] text-ink-3">{dirname(file.path) || 'top level'}</span>
+        <span className="block truncate text-meta">{dirname(file.path) || 'top level'}</span>
       </span>
     </>
   )
-  const cls =
-    'flex w-full min-w-0 items-center gap-2 rounded-lg border border-l-[3px] border-line bg-surface py-1.5 pr-2.5 pl-2 text-left shadow-sm'
-  const style = { borderLeftColor: layer.color }
+  const cls = 'flex w-full min-w-0 items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-left'
   if (!onSelect) {
     return (
-      <div ref={chipRef} className={cls} style={style} title={file.path}>
+      <div ref={chipRef} className={cls} title={file.path}>
         {body}
       </div>
     )
@@ -60,8 +60,10 @@ function Chip({ file, onSelect, chipRef }: { file: AnalyzedFile; onSelect?: (pat
     <button
       ref={chipRef}
       type="button"
-      className={cn(cls, 'cursor-pointer hover:border-line-strong hover:bg-surface-2 motion-safe:transition-colors')}
-      style={style}
+      className={cn(
+        cls,
+        'cursor-pointer hover:border-line-strong hover:bg-surface-2 motion-safe:transition-colors motion-safe:duration-150 motion-safe:ease-atlas',
+      )}
       title={`${file.path} — ${role.label}`}
       aria-label={`Open ${file.path} (${role.label})`}
       onClick={() => onSelect(file.path)}
@@ -97,12 +99,12 @@ function Side({
   const hidden = paths.length - shown.length
   return (
     <section className="min-w-0" aria-label={title}>
-      <h4 className="text-xs font-semibold text-ink">{title}</h4>
-      <p className="mb-2 text-[11px] text-ink-3">{subtitle}</p>
+      <h4 className="text-sm font-medium text-ink">{title}</h4>
+      <p className="mb-2 text-xs text-ink-3">{subtitle}</p>
       {paths.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-line px-3 py-2.5 text-xs text-ink-3">{empty}</p>
+        <p className="rounded-lg border border-dashed border-line px-3 py-2 text-xs text-ink-3">{empty}</p>
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="space-y-2">
           {shown.map((p) => (
             <li key={p}>
               <Chip file={allFiles[p]} onSelect={onSelect} chipRef={registerChip ? (el) => registerChip(p, el) : undefined} />
@@ -112,7 +114,7 @@ function Side({
             <li>
               <button
                 type="button"
-                className="rounded-md px-2 py-1 text-xs font-medium text-brand-text hover:bg-brand-soft"
+                className="h-7 rounded-md px-2 text-xs font-medium text-ink-2 hover:bg-surface-2 hover:text-ink motion-safe:transition-colors motion-safe:duration-150 motion-safe:ease-atlas"
                 aria-expanded={expanded}
                 onClick={() => setExpanded((e) => !e)}
               >
@@ -134,7 +136,6 @@ export function NeighborhoodGraph({ file, allFiles, onSelect, className, maxPerS
   const imports = useMemo(() => rankNeighbors(file.imports, allFiles), [file.imports, allFiles])
   const stacked = size.width > 0 && size.width < STACK_BELOW
   const role = ROLE_INFO[file.role] ?? ROLE_INFO.other
-  const layer = LAYER_INFO[file.layer] ?? LAYER_INFO.other
 
   const centerRef = useRef<HTMLDivElement>(null)
   const leftChips = useRef(new Map<string, HTMLElement>())
@@ -195,20 +196,18 @@ export function NeighborhoodGraph({ file, allFiles, onSelect, className, maxPerS
   const centerCard = (
     <div
       ref={centerRef}
-      className="relative w-full min-w-0 rounded-xl border-2 border-brand bg-surface px-3.5 py-3 shadow-md"
+      className="relative w-full min-w-0 rounded-xl border border-accent bg-surface px-4 py-3 shadow-sm ring-1 ring-accent"
       aria-label={`This file: ${file.path}`}
     >
-      <span className="absolute inset-y-2 left-0 w-1 rounded-r-full" style={{ background: layer.color }} aria-hidden />
+      <YouAreHerePin size={20} className="pointer-events-none absolute -top-3.5 right-3" />
       <div className="flex items-center gap-2">
-        <span className="text-xl leading-none" aria-hidden>
-          {file.isEntry ? ROLE_INFO.entry.emoji : role.emoji}
-        </span>
-        <span className="min-w-0 truncate text-sm font-semibold text-ink" title={file.path}>
+        <LayerDot layer={layerOf(file)} />
+        <span className="min-w-0 truncate text-sm font-medium text-ink" title={file.path}>
           {file.name}
         </span>
       </div>
-      <p className="mt-1 text-xs text-ink-2">{role.label}</p>
-      <p className="mt-0.5 text-[11px] text-ink-3">
+      <p className="mt-1 pl-4 text-[13px] text-ink-2">{role.label}</p>
+      <p className="mt-0.5 pl-4 break-words text-meta">
         {file.lines != null ? `${formatNumber(file.lines)} lines` : file.size ? formatBytes(file.size) : 'Not downloaded'}
         {' · '}
         {dirname(file.path) || 'top level'}
@@ -218,7 +217,7 @@ export function NeighborhoodGraph({ file, allFiles, onSelect, className, maxPerS
 
   const externalNote =
     externals.length > 0 ? (
-      <p className="mt-2 text-[11px] leading-snug text-ink-3">
+      <p className="mt-2 text-xs leading-snug text-ink-3">
         Also uses {pluralize(externals.length, 'outside package')}: {externals.slice(0, 4).join(', ')}
         {externals.length > 4 ? ` +${externals.length - 4} more` : ''}
       </p>
@@ -228,7 +227,7 @@ export function NeighborhoodGraph({ file, allFiles, onSelect, className, maxPerS
     <Side
       title={`Used by ${pluralize(importers.length, 'file')}`}
       subtitle="These files rely on it"
-      empty="No other file in the project uses this one directly."
+      empty="No other file in the project uses this one directly"
       paths={importers}
       allFiles={allFiles}
       max={maxPerSide}
@@ -240,7 +239,7 @@ export function NeighborhoodGraph({ file, allFiles, onSelect, className, maxPerS
     <Side
       title={`Uses ${pluralize(imports.length, 'file')}`}
       subtitle="It relies on these"
-      empty="It doesn’t use any other file in this project."
+      empty="It doesn’t use any other file in this project"
       paths={imports}
       allFiles={allFiles}
       max={maxPerSide}
@@ -259,9 +258,9 @@ export function NeighborhoodGraph({ file, allFiles, onSelect, className, maxPerS
       {stacked ? (
         <div className="flex flex-col gap-3">
           {left}
-          <ArrowDown className="mx-auto size-4 text-ink-3" aria-hidden />
+          <Icon as={ArrowDown} className="mx-auto text-ink-3" />
           {centerCard}
-          <ArrowDown className="mx-auto size-4 text-ink-3" aria-hidden />
+          <Icon as={ArrowDown} className="mx-auto text-ink-3" />
           {right}
         </div>
       ) : (

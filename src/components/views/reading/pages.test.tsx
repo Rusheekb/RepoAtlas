@@ -83,6 +83,8 @@ function renderPage(path: string) {
 }
 
 const location = () => screen.getByTestId('location').textContent ?? ''
+/** No emoji may be rendered in these views (they use line icons or nothing). */
+const EMOJI = /\p{Extended_Pictographic}/u
 
 beforeEach(() => {
   stubBrowser()
@@ -100,12 +102,14 @@ beforeEach(() => {
 describe('ExplorerPage', () => {
   it('opens the README by default, formatted, with the file list and notes alongside', async () => {
     renderPage('/gh/acme/shop/explore')
-    expect(screen.getByRole('heading', { name: /Read the Code/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Read the code/i })).toBeInTheDocument()
     expect(screen.getByRole('tree', { name: 'Project files' })).toBeInTheDocument()
     expect(screen.getByRole('treeitem', { name: /^README\.md/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('heading', { name: 'Shop', level: 1 })).toBeInTheDocument()
     const about = screen.getByTestId('about-file')
-    expect(within(about).getByText('About this file')).toBeInTheDocument()
+    // The panel no longer has an uppercase "ABOUT THIS FILE" label on screen; its heading still says so to screen readers.
+    expect(within(about).getByRole('heading', { name: /About this file/ })).toBeInTheDocument()
+    expect(screen.getByTestId('files-pane').textContent).not.toMatch(EMOJI)
     expect(within(about).getByRole('button', { name: /Add your Claude API key/ })).toBeInTheDocument()
     expect(useProgress.getState().isSeen('acme/shop', 'file:README.md')).toBe(true)
 
@@ -121,6 +125,7 @@ describe('ExplorerPage', () => {
     expect(within(pane).getByText('App.tsx')).toBeInTheDocument()
     expect(within(pane).getByText(/UI building block/)).toBeInTheDocument()
     expect(within(pane).getByRole('link', { name: /Open on GitHub/ })).toHaveAttribute('href', 'https://github.com/acme/shop/blob/abc123/src/App.tsx#L4')
+    expect(pane.textContent).not.toMatch(EMOJI)
     expect(document.querySelector('[data-line="4"]')).toHaveAttribute('data-selected', 'true')
 
     await user.click(screen.getByRole('button', { name: 'Explain line 4' }))
@@ -210,7 +215,7 @@ describe('AskPage', () => {
     expect(box).toHaveValue('Where does the program start?')
 
     await user.click(screen.getByRole('button', { name: /Copy prompt/ }))
-    expect(await screen.findByRole('button', { name: /Copied!/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /^Copied$/ })).toBeInTheDocument()
     expect(await navigator.clipboard.readText()).toContain('Where does the program start?')
   })
 
@@ -220,6 +225,7 @@ describe('AskPage', () => {
     const user = userEvent.setup()
     renderPage('/gh/acme/shop/ask')
     expect(screen.getByText('Claude is ready for your questions')).toBeInTheDocument()
+    expect(screen.getByTestId('suggestions').textContent).not.toMatch(EMOJI)
     await user.click(screen.getByRole('button', { name: 'What is React, and how does this project use it?' }))
     expect(mocks.chat.send).toHaveBeenLastCalledWith('What is React, and how does this project use it?')
 
@@ -293,12 +299,14 @@ describe('QuizPage', () => {
   it('runs the starter quiz without a key: answer, explanation, score, retry', async () => {
     const user = userEvent.setup()
     renderPage('/gh/acme/shop/quiz')
-    expect(screen.getByTestId('ai-callout')).toHaveTextContent('Want Claude’s take?')
+    // The callout offering Claude's version of the quiz (its wording belongs to AiAssist).
+    expect(screen.getByTestId('ai-callout')).toHaveTextContent(/Claude/)
     expect(screen.getByText(/Question 1 of \d/)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'What kind of project is this?' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Web application/ }))
-    expect(screen.getByTestId('quiz-feedback')).toHaveTextContent('That’s right!')
+    expect(screen.getByTestId('quiz-feedback')).toHaveTextContent(/^Correct/)
+    expect(screen.getByTestId('quiz-runner').textContent).not.toMatch(EMOJI)
     expect(screen.getByText('Correct answer')).toBeInTheDocument()
 
     // Answer the rest (always the first option), using the keyboard.
@@ -309,6 +317,7 @@ describe('QuizPage', () => {
     }
     const score = screen.getByTestId('quiz-score')
     expect(score).toHaveTextContent(/You got \d+ out of \d+ right/)
+    expect(score.textContent).not.toMatch(EMOJI)
     expect(within(score).getAllByRole('listitem').length).toBeGreaterThanOrEqual(5)
 
     await user.click(screen.getByRole('button', { name: /Try again/ }))

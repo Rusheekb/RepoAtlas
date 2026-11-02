@@ -67,7 +67,7 @@ describe('AiAnswer', () => {
     await user.click(screen.getByRole('button', { name: /copy a ready-made prompt/i }))
     expect(mocks.buildPrompt).toHaveBeenCalledWith({ kind: 'overview' })
     expect(writeText).toHaveBeenCalledWith('PROMPT TEXT')
-    expect(await screen.findByRole('button', { name: /copied!/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
   })
 
   it('falls back to a text box when the clipboard is blocked', async () => {

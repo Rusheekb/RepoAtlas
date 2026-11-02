@@ -13,6 +13,8 @@ import {
 import { ChevronRight, House } from 'lucide-react'
 import { Button, EmptyState, LayerLegend } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { Icon, ViewIcon } from '@/components/ui/icons'
+import { YouAreHerePin } from '@/components/ui/YouAreHere'
 import { formatBytes, formatCompact, formatNumber, pluralize } from '@/core/format'
 import { LAYER_INFO, ROLE_INFO } from '@/core/labels'
 import { LAYERS, type AnalyzedFile, type LanguageStat, type Layer } from '@/core/types'
@@ -65,9 +67,29 @@ function tint(color: string): string {
 
 const SIZE_FORMAT = { compact: formatCompact, bytes: formatBytes }
 
+/** Label type on the map: names in the interface sans, sizes in mono (average glyph widths for fitting). */
+const NAME_FONT = { fontSize: 12, fontWeight: 500, charWidth: 6.6 }
+const META_FONT = { fontFamily: 'var(--font-mono)', fontSize: 11, charWidth: 6.6 }
+/** The "you are here" pin drawn in the selected tile's corner when the tile has room for it. */
+const PIN = 16
+const PIN_INSET = 4
+
 function sizeText(d: TreemapDatum, sizeBy: 'lines' | 'bytes'): string {
   return tileSizeText(d, sizeBy, SIZE_FORMAT)
 }
+
+const CRUMB_BASE = 'inline-flex h-8 items-center gap-1.5 rounded-md px-2'
+const CRUMB_LINK = cn(
+  CRUMB_BASE,
+  'font-medium text-ink-2 hover:bg-surface-2 hover:text-ink motion-safe:transition-colors motion-safe:duration-150 motion-safe:ease-atlas',
+)
+const CRUMB_HERE = cn(CRUMB_BASE, 'font-medium text-ink')
+/** Folder-name crumbs truncate, so they are blocks rather than flex boxes. */
+const CRUMB_TEXT = 'block h-8 min-w-0 truncate rounded-md px-2 leading-8 font-medium'
+const CRUMB_TEXT_LINK = cn(
+  CRUMB_TEXT,
+  'text-ink-2 hover:bg-surface-2 hover:text-ink motion-safe:transition-colors motion-safe:duration-150 motion-safe:ease-atlas',
+)
 
 function itemLabel(d: TreemapDatum, sizeBy: 'lines' | 'bytes'): string {
   if (d.kind === 'file' && d.file) {
@@ -317,24 +339,29 @@ export function CodeTreemap({
     [order, selectedIdx, rovingIdx, colorOf, sizeBy],
   )
 
+  const pinned = selectedIdx === -1 ? null : order[selectedIdx]
+  const pinFits = !!pinned && pinned.datum.kind !== 'folder' && pinned.x1 - pinned.x0 >= 40 && pinned.y1 - pinned.y0 >= 28
+
   const labels = useMemo(() => {
     const out: ReactElement[] = []
+    const { charWidth: nameCw, ...nameStyle } = NAME_FONT
+    const { charWidth: metaCw, ...metaStyle } = META_FONT
     const renderFolderHeader = (r: TreemapRect) => {
       const w = r.x1 - r.x0
-      if (w < 30 || r.y1 - r.y0 < FOLDER_HEADER - 4) return
+      if (w < 32 || r.y1 - r.y0 < FOLDER_HEADER - 4) return
       const size = sizeText(r.datum, sizeBy)
-      const sizeW = size.length * 6 + 10
-      const showSize = w > sizeW + 70
-      const name = fitLabel(`${r.datum.name}/`, w - 12 - (showSize ? sizeW : 0), 6.8)
+      const sizeW = size.length * metaCw + 12
+      const showSize = w > sizeW + 72
+      const name = fitLabel(`${r.datum.name}/`, w - 16 - (showSize ? sizeW : 0), nameCw)
       if (!name) return
       out.push(
-        <text key={`fh:${r.datum.key}`} x={r.x0 + 7} y={r.y0 + 14} className="tm-label" style={{ fill: 'var(--ink)', fontSize: 11.5, fontWeight: 600 }}>
+        <text key={`fh:${r.datum.key}`} x={r.x0 + 8} y={r.y0 + 14} className="tm-label" style={{ ...nameStyle, fill: 'var(--ink-2)' }}>
           {name}
         </text>,
       )
       if (showSize)
         out.push(
-          <text key={`fs:${r.datum.key}`} x={r.x1 - 7} y={r.y0 + 14} textAnchor="end" className="tm-label" style={{ fill: 'var(--ink-3)', fontSize: 11 }}>
+          <text key={`fs:${r.datum.key}`} x={r.x1 - 8} y={r.y0 + 14} textAnchor="end" className="tm-label" style={{ ...metaStyle, fill: 'var(--ink-3)' }}>
             {size}
           </text>,
         )
@@ -342,28 +369,36 @@ export function CodeTreemap({
     const renderLeaf = (r: TreemapRect) => {
       const w = r.x1 - r.x0
       const h = r.y1 - r.y0
-      if (w < 36 || h < 17) return
+      if (w < 36 || h < 18) return
       const d = r.datum
-      const name = fitLabel(d.kind === 'aggregate' ? `${d.name}/` : d.name, w - 10, 6.4)
+      // Leave room for the pin in the selected tile's corner.
+      const room = w - 10 - (pinFits && r === pinned ? PIN + PIN_INSET : 0)
+      const name = fitLabel(d.kind === 'aggregate' ? `${d.name}/` : d.name, room, nameCw)
       if (!name) return
       out.push(
-        <text key={`ln:${d.kind}${d.key}`} x={r.x0 + 5} y={r.y0 + 13} className="tm-label" style={{ fill: 'var(--ink)', fontSize: 11, fontWeight: 500 }}>
+        <text key={`ln:${d.kind}${d.key}`} x={r.x0 + 5} y={r.y0 + 14} className="tm-label" style={{ ...nameStyle, fill: 'var(--ink)' }}>
           {name}
         </text>,
       )
-      if (h >= 32 && w >= 56) {
-        const sub = fitLabel(d.kind === 'aggregate' ? pluralize(d.fileCount, 'file') : sizeText(d, sizeBy), w - 10, 6)
+      if (h >= 34 && w >= 56) {
+        const sub = fitLabel(d.kind === 'aggregate' ? pluralize(d.fileCount, 'file') : sizeText(d, sizeBy), w - 10, metaCw)
         if (sub)
           out.push(
-            <text key={`ls:${d.kind}${d.key}`} x={r.x0 + 5} y={r.y0 + 26} className="tm-label" style={{ fill: 'var(--ink)', fontSize: 10.5 }}>
+            <text key={`ls:${d.kind}${d.key}`} x={r.x0 + 5} y={r.y0 + 28} className="tm-label" style={{ ...metaStyle, fill: 'var(--ink)' }}>
               {sub}
             </text>,
           )
       }
     }
     for (const r of order) (r.datum.kind === 'folder' ? renderFolderHeader : renderLeaf)(r)
+    if (pinFits && pinned)
+      out.push(
+        <g key="pin" transform={`translate(${pinned.x1 - PIN - PIN_INSET},${pinned.y0 + PIN_INSET})`}>
+          <YouAreHerePin size={PIN} className="pointer-events-none" />
+        </g>,
+      )
     return out
-  }, [order, sizeBy])
+  }, [order, sizeBy, pinned, pinFits])
 
   const legend = useMemo(() => {
     if (!showLegend) return null
@@ -383,16 +418,16 @@ export function CodeTreemap({
     const hasOther = weights.has('') || named.length > top.length
     if (top.length + (hasOther ? 1 : 0) < 2) return null
     return (
-      <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-ink-2" aria-label="Color legend">
+      <ul className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-2" aria-label="Color legend">
         {top.map(([name]) => (
           <li key={name} className="inline-flex items-center gap-1.5">
-            <span className="size-2.5 rounded-full" style={{ background: colorMap.get(name) }} aria-hidden />
+            <span className="size-2 rounded-full" style={{ background: colorMap.get(name) }} aria-hidden />
             {name}
           </li>
         ))}
         {hasOther && (
           <li className="inline-flex items-center gap-1.5">
-            <span className="size-2.5 rounded-full" style={{ background: NEUTRAL }} aria-hidden />
+            <span className="size-2 rounded-full" style={{ background: NEUTRAL }} aria-hidden />
             Other / not code
           </li>
         )}
@@ -404,23 +439,19 @@ export function CodeTreemap({
   const empty = !tree.children?.length
 
   return (
-    <div className={cn('atlas-treemap flex h-full w-full min-w-0 flex-col gap-2', className)} data-testid="code-treemap">
+    <div className={cn('atlas-treemap flex h-full w-full min-w-0 flex-col gap-3', className)} data-testid="code-treemap">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <nav aria-label="Folder you are viewing" className="min-w-0">
+        <nav aria-label="Folder you are viewing" className="-ml-2 min-w-0">
           <ol className="flex min-w-0 flex-wrap items-center gap-0.5 text-sm">
             <li className="flex items-center">
               {root ? (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 font-medium text-brand-text hover:bg-brand-soft"
-                  onClick={() => zoomTo('', false)}
-                >
-                  <House className="size-3.5" aria-hidden />
+                <button type="button" className={CRUMB_LINK} onClick={() => zoomTo('', false)}>
+                  <Icon as={House} className="text-ink-3" />
                   All files
                 </button>
               ) : (
-                <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 font-semibold text-ink" aria-current="location">
-                  <House className="size-3.5" aria-hidden />
+                <span className={CRUMB_HERE} aria-current="location">
+                  <Icon as={House} className="text-ink-3" />
                   All files
                 </span>
               )}
@@ -430,17 +461,13 @@ export function CodeTreemap({
               const last = i === trail.length - 1
               return (
                 <li key={p} className="flex min-w-0 items-center">
-                  <ChevronRight className="size-3.5 shrink-0 text-ink-3" aria-hidden />
+                  <Icon as={ChevronRight} size={14} className="text-ink-3" />
                   {last ? (
-                    <span className="truncate px-1.5 py-0.5 font-semibold text-ink" aria-current="location">
+                    <span className={cn(CRUMB_TEXT, 'text-ink')} aria-current="location">
                       {name}
                     </span>
                   ) : (
-                    <button
-                      type="button"
-                      className="truncate rounded-md px-1.5 py-0.5 font-medium text-brand-text hover:bg-brand-soft"
-                      onClick={() => zoomTo(p, false)}
-                    >
+                    <button type="button" className={CRUMB_TEXT_LINK} onClick={() => zoomTo(p, false)}>
                       {name}
                     </button>
                   )}
@@ -450,7 +477,7 @@ export function CodeTreemap({
           </ol>
         </nav>
         {!empty && (
-          <p className="text-xs text-ink-3">
+          <p className="text-meta">
             {pluralize(tree.fileCount, 'file')} · {tree.lines > 0 ? `${formatNumber(tree.lines)} lines` : formatBytes(tree.bytes)}
           </p>
         )}
@@ -460,7 +487,7 @@ export function CodeTreemap({
         {empty ? (
           <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-line">
             <EmptyState
-              icon="🧱"
+              icon={<ViewIcon view="codemap" size={20} />}
               title={root ? 'This folder has no files we can show' : 'No files to show yet'}
               actions={
                 root ? (

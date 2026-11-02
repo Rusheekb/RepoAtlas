@@ -69,12 +69,12 @@ export function computeLearningProgress(baseKeys: readonly string[], seen: Recor
   return { seen: seenCount, total, percent }
 }
 
-/** A friendly line for the progress meter. */
+/** A short, plain line for the progress meter (no exclamation marks). */
 export function progressMessage(p: LearningProgress): string {
   if (p.total === 0) return 'Start exploring to track what you’ve learned.'
-  if (p.seen === 0) return 'Open anything to start your journey.'
-  if (p.percent >= 100) return 'You’ve explored everything on the list. Impressive!'
+  if (p.seen === 0) return 'Open anything to start.'
+  if (p.percent >= 100) return 'You’ve explored everything on the list.'
   if (p.percent >= 75) return 'Nearly there. You know this project well.'
-  if (p.percent >= 40) return 'Great progress. The pieces are coming together.'
-  return 'Nice start. Keep exploring!'
+  if (p.percent >= 40) return 'The pieces are coming together.'
+  return 'A good start. Keep exploring.'
 }

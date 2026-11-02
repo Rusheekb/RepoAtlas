@@ -34,9 +34,10 @@ export function rankModules(analysis: Pick<RepoAnalysis, 'modules' | 'moduleEdge
 }
 
 /**
- * Recommended order to explore the repo (6–10 steps): read the README → see The Big Picture → look at the map →
+ * Recommended order to explore the repo (6–10 steps): read the README → see the big picture → look at the map →
  * open the main entry point → visit the 2–4 most important modules (by size/centrality) → a hub file → take a tour →
- * test yourself. Each step has a plain-English "why" and a rough reading time.
+ * test yourself. Each step has a plain-English "why" and a rough reading time. Titles and descriptions are plain text:
+ * no emoji (a module's emoji stays in its data) and no exclamation marks.
  */
 export function buildLearningPath(analysis: PathInput, options: { name?: string } = {}): LearningStep[] {
   const steps: LearningStep[] = []
@@ -113,7 +114,7 @@ export function buildLearningPath(analysis: PathInput, options: { name?: string 
             : 'It’s one of the main parts of the project.'
     push({
       id: `module:${m.id}`,
-      title: `Explore ${m.emoji} ${safeName(m.name, 40)}`,
+      title: `Explore ${safeName(m.name, 40)}`,
       description: `${lead} ${why}${start ? ` A good file to start with is ${basename(start)}.` : ''}`,
       target: { type: 'module', id: m.id },
       minutes: clampMinutes(m.lines / 150, 3, 12),

@@ -13,6 +13,7 @@ How to write
 - Unless the reading-level guidance says otherwise, use plain, warm, everyday English: short paragraphs, short sentences, concrete examples.
 - Where the reading level calls for them, reach for everyday analogies (a restaurant kitchen, a post office, a library, LEGO bricks) to make abstract ideas tangible, and make each part of an analogy match a real part of the code.
 - Use markdown: headings, bullet lists and numbered steps where they help. Only use code blocks for short excerpts copied exactly from the repository.
+- Keep the voice calm and the formatting plain: no emoji anywhere (not in headings, lists or as decoration), no exclamation marks and no hype words (say what a thing does instead). Write headings in sentence case with no trailing period, and skip decorative symbols and dividers.
 - When you mention a file or folder, write its path in backticks exactly as it appears in the repository, for example \`src/app/main.ts\`. The reader can click these to open them, so never shorten, rename or invent paths.
 - The first time you use an unavoidable technical term, define it in a few plain words, for example: "an API (a menu of requests one program can make to another)".
 - Never condescend. The reader is smart and curious, just new to code.
@@ -391,7 +392,7 @@ export function buildConceptPrompt(d: PromptData, concept: Concept, files: Promp
   const a = d.analysis
   const known = concept.files.filter((p) => a.files[p])
   const lines = [
-    `- Name: ${concept.emoji} ${concept.name} (${concept.category})`,
+    `- Name: ${concept.name} (${concept.category})`,
     `- Summary: ${concept.summary}`,
     concept.explanation && `- Notes so far: ${concept.explanation.replace(/\s+/g, ' ').slice(0, 1200)}`,
     concept.analogy && `- Analogy so far: ${concept.analogy}`,
@@ -529,7 +530,7 @@ export function buildConceptsPrompt(d: PromptData, mode: OutputMode = 'json'): s
       levelBlock(d.level),
       intro,
       hintBlock,
-      'List 8–15 key ideas, most important first. For each one write a "### <emoji> <name>" heading, then: a one-sentence summary, a short explanation of how it shows up in this project (file paths in backticks), an everyday analogy, and the files where it lives.',
+      'List 8–15 key ideas, most important first. For each one write a "### <name>" heading (plain text, no emoji), then: a one-sentence summary, a short explanation of how it shows up in this project (file paths in backticks), an everyday analogy, and the files where it lives.',
       'Finish with a section "## How the ideas connect" listing 8–20 links in the form "**A** → is saved in → **B**".',
     )
   }
@@ -540,7 +541,8 @@ export function buildConceptsPrompt(d: PromptData, mode: OutputMode = 'json'): s
       'Rules:',
       '- 8–18 concepts. For each:',
       '  - id: unique kebab-case (lowercase words joined by hyphens), e.g. "user-account".',
-      '  - name: 1–4 words. emoji: exactly one emoji.',
+      '  - name: 1–4 words in sentence case, plain text.',
+      '  - emoji: exactly one emoji. It is stored with the idea but never shown, so leave emoji out of every other field.',
       '  - category: one of data, feature, process, actor, technology, idea.',
       '  - summary: one plain sentence.',
       '  - explanation: 1–4 short markdown paragraphs about how the idea shows up in THIS project, mentioning real file paths in backticks.',
@@ -549,6 +551,7 @@ export function buildConceptsPrompt(d: PromptData, mode: OutputMode = 'json'): s
       '  - importance: a whole number from 1 (minor) to 5 (central). Only 2–4 concepts should get a 5.',
       '- relations: 8–30 links between concepts. "from" and "to" must be concept ids from your own list (never names). "label" is a short verb phrase of 2–5 words that reads naturally as "<from> <label> <to>", e.g. "is saved in", "is created by", "shows".',
       '- Every concept should take part in at least one relation.',
+      '- Plain text everywhere except the emoji field: no emoji and no exclamation marks in names, summaries, explanations, analogies or labels.',
     ].join('\n'),
     hintBlock,
     JSON_ONLY,
@@ -570,8 +573,8 @@ export function buildToursPrompt(d: PromptData, mode: OutputMode = 'json', quest
       levelBlock(d.level),
       intro,
       q
-        ? 'Write the tour as markdown: a "## <emoji> <title>" heading, a one-sentence summary, then 4–9 numbered steps. Each step names the file it looks at (in backticks), quotes one short line copied exactly from that file, and explains in 2–4 plain sentences what happens there.'
-        : 'Write 3 tours as markdown. For each: a "## <emoji> <title>" heading, the question it answers, a one-sentence summary, then 4–8 numbered steps. Each step names the file it looks at (in backticks), quotes one short line copied exactly from that file, and explains in 2–4 plain sentences what happens there.',
+        ? 'Write the tour as markdown: a "## <title>" heading (plain text, no emoji), a one-sentence summary, then 4–9 numbered steps. Each step names the file it looks at (in backticks), quotes one short line copied exactly from that file, and explains in 2–4 plain sentences what happens there.'
+        : 'Write 3 tours as markdown. For each: a "## <title>" heading (plain text, no emoji), the question it answers, a one-sentence summary, then 4–8 numbered steps. Each step names the file it looks at (in backticks), quotes one short line copied exactly from that file, and explains in 2–4 plain sentences what happens there.',
     )
   }
   return join(
@@ -580,13 +583,15 @@ export function buildToursPrompt(d: PromptData, mode: OutputMode = 'json', quest
     [
       'Rules:',
       q ? '- Exactly 1 tour with 4–9 steps. Its "question" field restates the reader\'s question.' : '- 3–5 tours, each with 4–9 steps, that together cover the most important parts of the project. Avoid repeating the same steps across tours.',
-      '- id: unique kebab-case, e.g. "app-startup". title: short. question: phrased the way a newcomer would ask it. emoji: exactly one emoji. summary: 1–2 plain sentences.',
+      '- id: unique kebab-case, e.g. "app-startup". title: short, in sentence case, with no trailing period. question: phrased the way a newcomer would ask it. summary: 1–2 plain sentences.',
+      '- emoji: exactly one emoji. It is stored with the tour but never shown, so leave emoji out of every other field.',
       '- Each step:',
-      '  - title: short.',
+      '  - title: short, plain text, no trailing period.',
       '  - explanation: 2–5 plain sentences (markdown allowed, file paths in backticks).',
       '  - file: an exact path from the <file_tree> or <source_files>, or null for a conceptual step.',
       '  - snippet: ONE short line (under 120 characters) copied character-for-character from that file — a distinctive line such as a function definition. Only give a snippet when you can see the file\'s contents in <source_files>; otherwise null.',
       `  - moduleId: one of these module ids, or null: ${moduleIdList(a)}.`,
+      '- Plain text everywhere except the emoji field: no emoji and no exclamation marks in titles, questions, summaries or explanations.',
     ].join('\n'),
     JSON_ONLY,
   )
@@ -600,7 +605,7 @@ export function buildQuizPrompt(d: PromptData, mode: OutputMode = 'json'): strin
     return join(
       levelBlock(d.level),
       intro,
-      'Write 6–8 questions as a numbered list, each with 3–4 options labelled A–D. Put the answers, each with a one-sentence explanation, in a final section called "## Answers" so I can try first.',
+      'Write 6–8 questions as a numbered list, each with 3–4 options labelled A–D. Put the answers, each with a one-sentence explanation, in a final section called "## Answers" so I can try first. Plain text only: no emoji and no exclamation marks.',
     )
   }
   return join(
@@ -612,6 +617,7 @@ export function buildQuizPrompt(d: PromptData, mode: OutputMode = 'json'): strin
       '- options: 3 or 4 short answers per question. Exactly one is correct; the wrong ones should be plausible.',
       '- answerIndex: the 0-based position of the correct option. Vary the position across questions.',
       '- explanation: 1–3 plain sentences on why the answer is right, mentioning real file paths in backticks where helpful.',
+      '- Plain text in every field: no emoji and no exclamation marks. Options have no trailing period, and explanations say why the answer is right without praising the reader.',
     ].join('\n'),
     JSON_ONLY,
   )

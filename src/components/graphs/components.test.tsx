@@ -34,6 +34,15 @@ describe('ArchitectureGraph', () => {
     expect(screen.getByLabelText('Color legend')).toBeInTheDocument()
     expect(screen.getByText('Explored')).toBeInTheDocument()
     expect(container.querySelectorAll('.react-flow__edge').length).toBe(MODULE_EDGES.length)
+    // Cards carry a layer dot, never an emoji.
+    for (const card of container.querySelectorAll('.react-flow__node')) expect(card.textContent).not.toMatch(/\p{Extended_Pictographic}/u)
+  })
+
+  it('marks the selected part with the “you are here” pin', () => {
+    const { container } = render(<ArchitectureGraph modules={MODULES} edges={MODULE_EDGES} selectedId="src/pages" />)
+    const pin = 'path[fill="var(--accent)"]'
+    expect(nodeEl(container, 'src/pages').querySelector(pin)).toBeInTheDocument()
+    expect(nodeEl(container, 'src/utils').querySelector(pin)).not.toBeInTheDocument()
   })
 
   it('selects with click and keyboard, opens with double-click or Enter on the selected card, clears with Escape', () => {
@@ -66,7 +75,8 @@ describe('ArchitectureGraph', () => {
     expect(nodeEl(container, 'src/pages').querySelector('.atlas-node')).not.toHaveClass('opacity-35')
     fireEvent.mouseEnter(nodeEl(container, 'src/state'), { clientX: 10, clientY: 10 })
     const tip = screen.getByRole('tooltip')
-    expect(within(tip).getByText('🧠 state')).toBeInTheDocument()
+    // The tooltip names the part in words; no emoji.
+    expect(within(tip).getByText('state')).toBeInTheDocument()
     expect(within(tip).getByText('pages, utils')).toBeInTheDocument()
     expect(within(tip).getByText('The src/state part of the project.')).toBeInTheDocument()
     fireEvent.mouseLeave(nodeEl(container, 'src/state'))
@@ -109,7 +119,7 @@ describe('FileGraph', () => {
     const many = Array.from({ length: 10 }, (_, i) => makeFile(`src/big/f${i}.ts`))
     const { container } = render(<FileGraph files={many} edges={[{ source: 'src/big/f1.ts', target: 'src/big/f2.ts' }]} maxNodes={4} />)
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(4)
-    expect(screen.getByText('Showing the 4 most connected files (of 10).')).toBeInTheDocument()
+    expect(screen.getByText('Showing the 4 most connected files of 10')).toBeInTheDocument()
   })
 })
 
@@ -167,8 +177,8 @@ describe('NeighborhoodGraph', () => {
   it('explains empty sides', () => {
     const lonely = makeFile('a.ts')
     render(<NeighborhoodGraph file={lonely} allFiles={{ 'a.ts': lonely }} />)
-    expect(screen.getByText('No other file in the project uses this one directly.')).toBeInTheDocument()
-    expect(screen.getByText('It doesn’t use any other file in this project.')).toBeInTheDocument()
+    expect(screen.getByText('No other file in the project uses this one directly')).toBeInTheDocument()
+    expect(screen.getByText('It doesn’t use any other file in this project')).toBeInTheDocument()
   })
 })
 
@@ -268,6 +278,9 @@ describe('TourDiagram', () => {
     expect(steps[1]).toHaveAttribute('aria-current', 'step')
     expect(steps[1]).toHaveTextContent('Home.tsx')
     expect(steps[2]).toHaveTextContent('Big-picture idea')
+    // The current step carries the "you are here" pin; the others don't.
+    expect(steps[1].querySelector('path[fill="var(--accent)"]')).toBeInTheDocument()
+    expect(steps[0].querySelector('path[fill="var(--accent)"]')).not.toBeInTheDocument()
     await user.click(steps[2])
     expect(onStepClick).toHaveBeenCalledWith(2)
   })

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { Wand2 } from 'lucide-react'
+import { Route } from 'lucide-react'
 import { useHasAiKey, useTours } from '@/ai'
 import { useRepoNav } from '@/components/shell/hooks'
-import { Button, EmptyState, Spinner } from '@/components/ui'
+import { Button, EmptyState, Icon, Spinner } from '@/components/ui'
 import { AiAssist } from '@/components/views/visual/AiAssist'
 import { TourCard } from '@/components/views/visual/TourCard'
 import { TourPlayer } from '@/components/views/visual/TourPlayer'
@@ -30,12 +30,11 @@ function AskForTour({ onAsk, disabled }: { onAsk: (q: string) => void; disabled:
     setQuestion('')
   }
   return (
-    <form onSubmit={submit} className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-      <p className="text-sm font-semibold text-ink">
-        <span aria-hidden>🙋 </span>
+    <form onSubmit={submit} className="rounded-xl border border-line bg-surface p-4 shadow-sm">
+      <p className="text-sm font-medium text-ink">
         <label htmlFor={`${id}-input`}>Ask for a tour</label>
       </p>
-      <p id={`${id}-help`} className="mt-0.5 text-xs text-ink-3">
+      <p id={`${id}-help`} className="mt-1 text-xs text-ink-3">
         Wondering how something works? Ask, and Claude will build a step-by-step tour that answers it.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -47,9 +46,9 @@ function AskForTour({ onAsk, disabled }: { onAsk: (q: string) => void; disabled:
           placeholder="How does ___ work?"
           aria-describedby={`${id}-help`}
           maxLength={300}
-          className="h-10 min-w-0 flex-[1_1_16rem] rounded-xl border border-line-strong bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-brand focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1"
+          className="h-10 min-w-0 flex-[1_1_16rem] rounded-lg border border-line-strong bg-surface px-3 text-sm text-ink transition-colors duration-150 ease-atlas placeholder:text-ink-3 focus:border-ink-3 focus-visible:outline-offset-1"
         />
-        <Button type="submit" variant="secondary" disabled={disabled || !question.trim()} icon={<Wand2 className="size-4" aria-hidden />}>
+        <Button type="submit" variant="secondary" disabled={disabled || !question.trim()} icon={<Route className="size-4" strokeWidth={1.5} aria-hidden />}>
           Make this tour
         </Button>
       </div>
@@ -61,11 +60,11 @@ function TourGrid({ title, subtitle, tours, hrefFor, seen }: { title: string; su
   const id = useId()
   return (
     <section aria-labelledby={id}>
-      <h2 id={id} className="text-lg font-semibold text-ink">
+      <h2 id={id} className="text-lg font-medium text-ink">
         {title}
       </h2>
-      <p className="text-sm text-ink-2">{subtitle}</p>
-      <ul className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <p className="mt-1 text-sm text-ink-2">{subtitle}</p>
+      <ul className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {tours.map((t) => (
           <li key={t.id}>
             <TourCard tour={t} to={hrefFor(t)} status={tourStatus(t, seen)} seenSteps={seenStepCount(t, seen)} />
@@ -169,7 +168,7 @@ export default function ToursPage() {
       <div className="flex min-h-[60vh] items-center justify-center p-6">
         {graceOver ? (
           <EmptyState
-            icon="🧭"
+            icon={<Icon as={Route} size={18} />}
             title="We couldn’t find that tour"
             actions={
               <Button variant="primary" onClick={() => navigate(listHref)}>
@@ -191,32 +190,34 @@ export default function ToursPage() {
   const info = VIEW_INFO.tours
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6" data-testid="tours-page">
-      <ViewHeader emoji={info.emoji} title={info.label} hint={HINT} />
-      <AiAssist
-        hasKey={hasKey}
-        busy={busy}
-        state={ai.state}
-        aiStatus={ai.aiStatus}
-        progressChars={ai.progressChars}
-        error={ai.error}
-        errorKind={ai.errorKind}
-        hasData={aiTours.length > 0}
-        stale={Boolean(ai.stale)}
-        onGenerate={ai.run}
-        onCancel={ai.cancel}
-        generateLabel="Generate tours with Claude"
-        regenerateLabel="Write new tours with Claude"
-        busyLabel={asking ? 'Claude is building a tour for your question' : 'Claude is writing tours of this project'}
-        pitch="These starter tours were put together from the project’s structure. Claude can read the actual code and write richer tours, or one that answers your own question."
-        doneNote="Claude’s tours are below, written from the actual code."
-        promptTask={{ kind: 'tours' }}
-      >
-        <AskForTour onAsk={onAsk} disabled={busy} />
-      </AiAssist>
+    <div className="mx-auto w-full max-w-6xl space-y-8 p-4 sm:p-6" data-testid="tours-page">
+      <div className="space-y-4">
+        <ViewHeader view="tours" title={info.label} hint={HINT} />
+        <AiAssist
+          hasKey={hasKey}
+          busy={busy}
+          state={ai.state}
+          aiStatus={ai.aiStatus}
+          progressChars={ai.progressChars}
+          error={ai.error}
+          errorKind={ai.errorKind}
+          hasData={aiTours.length > 0}
+          stale={Boolean(ai.stale)}
+          onGenerate={ai.run}
+          onCancel={ai.cancel}
+          generateLabel="Generate tours with Claude"
+          regenerateLabel="Write new tours with Claude"
+          busyLabel={asking ? 'Claude is building a tour for your question' : 'Claude is writing tours of this project'}
+          pitch="These starter tours were put together from the project’s structure. Claude can read the actual code and write richer tours, or one that answers your own question."
+          doneNote="Claude’s tours are below, written from the actual code"
+          promptTask={{ kind: 'tours' }}
+        >
+          <AskForTour onAsk={onAsk} disabled={busy} />
+        </AiAssist>
+      </div>
 
       {tours.length === 0 ? (
-        <EmptyState icon="🧭" title="No tours yet">
+        <EmptyState icon={<Icon as={Route} size={18} />} title="No tours yet">
           We couldn’t put together a tour for this project on our own.
           {hasKey ? ' Ask Claude to write some with the button above.' : ' Add a Claude key in Settings and Claude can write some for you.'}
         </EmptyState>
@@ -224,8 +225,8 @@ export default function ToursPage() {
         <>
           {aiTours.length > 0 && (
             <TourGrid
-              title="✨ Tours written by Claude"
-              subtitle="Claude read the code and wrote these walkthroughs."
+              title="Tours written by Claude"
+              subtitle="Claude read the code and wrote these walkthroughs"
               tours={aiTours}
               hrefFor={hrefFor}
               seen={seen}
@@ -233,8 +234,8 @@ export default function ToursPage() {
           )}
           {starterTours.length > 0 && (
             <TourGrid
-              title={aiTours.length > 0 ? '🧭 Starter tours' : '🧭 Tours to get you started'}
-              subtitle="Put together instantly from how the project is organized."
+              title={aiTours.length > 0 ? 'Starter tours' : 'Tours to get you started'}
+              subtitle="Put together instantly from how the project is organized"
               tours={starterTours}
               hrefFor={hrefFor}
               seen={seen}

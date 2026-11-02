@@ -33,7 +33,7 @@ export const LAYER_INFO: Record<
   logic: {
     label: 'Core logic',
     short: 'Logic',
-    description: 'The rules and the "thinking": calculations, decisions and processing.',
+    description: 'The rules and the “thinking”: calculations, decisions and processing.',
     emoji: '⚙️',
     color: 'var(--layer-logic)',
     className: 'bg-layer-logic',
@@ -181,14 +181,14 @@ export const PROJECT_KIND_INFO: Record<ProjectKindId, { label: string; descripti
 }
 
 export const VIEW_INFO: Record<ViewId, { label: string; description: string; emoji: string }> = {
-  overview: { label: 'The Big Picture', description: 'What this project is and how it works, in plain English.', emoji: '🔭' },
-  map: { label: 'How It Connects', description: 'A map of the main parts and how they depend on each other.', emoji: '🗺️' },
-  codemap: { label: 'Where Code Lives', description: 'Every file as a tile, sized by how much code it holds.', emoji: '🧱' },
-  concepts: { label: 'Key Ideas', description: 'The important ideas behind the project and how they relate.', emoji: '💡' },
-  tours: { label: 'Guided Tours', description: 'Step-by-step walkthroughs of how things happen.', emoji: '🧭' },
-  explore: { label: 'Read the Code', description: 'Browse files with plain-English explanations alongside.', emoji: '📂' },
-  ask: { label: 'Ask a Question', description: 'Chat with Claude about this project.', emoji: '💬' },
-  quiz: { label: 'Test Yourself', description: 'Check what you’ve learned with a quick quiz.', emoji: '🎓' },
+  overview: { label: 'The big picture', description: 'What this project is and how it works, in plain English.', emoji: '🔭' },
+  map: { label: 'How it connects', description: 'A map of the main parts and how they depend on each other.', emoji: '🗺️' },
+  codemap: { label: 'Where code lives', description: 'Every file as a tile, sized by how much code it holds.', emoji: '🧱' },
+  concepts: { label: 'Key ideas', description: 'The important ideas behind the project and how they relate.', emoji: '💡' },
+  tours: { label: 'Guided tours', description: 'Step-by-step walkthroughs of how things happen.', emoji: '🧭' },
+  explore: { label: 'Read the code', description: 'Browse files with plain-English explanations alongside.', emoji: '📂' },
+  ask: { label: 'Ask a question', description: 'Chat with Claude about this project.', emoji: '💬' },
+  quiz: { label: 'Test yourself', description: 'Check what you’ve learned with a quick quiz.', emoji: '🎓' },
   glossary: { label: 'Glossary', description: 'Technical words explained simply.', emoji: '📘' },
 }
 

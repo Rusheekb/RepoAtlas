@@ -84,7 +84,7 @@ function FileButton({ path, onCodeClick, children }: { path: string; onCodeClick
     <button
       type="button"
       onClick={() => onCodeClick(path)}
-      className="cursor-pointer rounded-[5px] border border-line bg-brand-soft px-[0.35em] py-[0.08em] font-mono text-[0.86em] text-brand-text hover:underline"
+      className="cursor-pointer rounded border border-line bg-surface-2 px-[0.35em] py-[0.08em] font-mono text-[0.86em] text-ink underline decoration-ink-3 decoration-dotted underline-offset-2 transition-colors duration-150 ease-atlas hover:decoration-ink hover:decoration-solid"
       title="Open this file"
     >
       <InsideLink.Provider value>{children}</InsideLink.Provider>

@@ -10,32 +10,32 @@ export const CONCEPT_CATEGORIES: readonly ConceptCategory[] = ['feature', 'actor
 export const CONCEPT_CATEGORY_INFO: Record<ConceptCategory, { label: string; description: string; color: string }> = {
   feature: {
     label: 'Feature',
-    description: 'Something people can do with the project.',
+    description: 'Something people can do with the project',
     color: 'var(--layer-ui)',
   },
   actor: {
     label: 'Who’s involved',
-    description: 'A person, role or outside system that takes part.',
+    description: 'A person, role or outside system that takes part',
     color: 'var(--layer-api)',
   },
   process: {
     label: 'Process',
-    description: 'A series of steps that happen in order.',
+    description: 'A series of steps that happen in order',
     color: 'var(--layer-logic)',
   },
   data: {
     label: 'Information',
-    description: 'Information the project keeps or passes around.',
+    description: 'Information the project keeps or passes around',
     color: 'var(--layer-data)',
   },
   idea: {
     label: 'Big idea',
-    description: 'A principle or way of thinking behind the design.',
+    description: 'A principle or way of thinking behind the design',
     color: 'var(--layer-test)',
   },
   technology: {
     label: 'Technology',
-    description: 'A tool or building block the project relies on.',
+    description: 'A tool or building block the project relies on',
     color: 'var(--layer-docs)',
   },
 }
@@ -44,7 +44,7 @@ export const CONCEPT_CATEGORY_INFO: Record<ConceptCategory, { label: string; des
 export function conceptCategoryInfo(category: string): { label: string; description: string; color: string } {
   return (CONCEPT_CATEGORY_INFO as Record<string, { label: string; description: string; color: string }>)[category] ?? {
     label: 'Other',
-    description: 'Another kind of idea.',
+    description: 'Another kind of idea',
     color: 'var(--layer-other)',
   }
 }
@@ -55,6 +55,7 @@ export interface TechRow {
   id: TechRowId
   label: string
   description: string
+  /** Kept for data compatibility; the interface shows a layer dot instead. */
   emoji: string
   /** Layer whose color marks this row (matches the "kind of code" colors used everywhere else). */
   layer: Layer
@@ -65,28 +66,28 @@ export const TECH_ROWS: readonly TechRow[] = [
   {
     id: 'surface',
     label: 'What you see',
-    description: 'The screens, buttons and looks that people actually interact with.',
+    description: 'The screens, buttons and looks that people actually interact with',
     emoji: '🖼️',
     layer: 'ui',
   },
   {
     id: 'engine',
     label: 'The engine',
-    description: 'The code that does the real work behind the screens: rules, calculations and answers to requests.',
+    description: 'The code that does the real work behind the screens: rules, calculations and answers to requests',
     emoji: '⚙️',
     layer: 'logic',
   },
   {
     id: 'data',
     label: 'Where data lives',
-    description: 'Where information is stored so it is still there tomorrow.',
+    description: 'Where information is stored so it is still there tomorrow',
     emoji: '🗄️',
     layer: 'data',
   },
   {
     id: 'tools',
     label: 'Tools behind the scenes',
-    description: 'Helpers the developers use to build, check and ship the project. Users never see these.',
+    description: 'Helpers the developers use to build, check and ship the project; users never see them',
     emoji: '🧰',
     layer: 'infra',
   },
@@ -150,11 +151,14 @@ export function groupTechByRow(tech: readonly TechItem[]): { row: TechRow; items
   return out
 }
 
-/** A one-line plain-English hint for a tech chip: its analogy if there is one, else the first sentence. */
+/**
+ * A one-line plain-English hint for a tech chip: its analogy if there is one, else the first sentence. It is a caption,
+ * so it ends without a full stop or exclamation mark.
+ */
 export function techHint(item: Pick<TechItem, 'analogy' | 'description'>, maxLength = 72): string {
   const raw = (item.analogy?.trim() || item.description?.trim() || '').replace(/\s+/g, ' ')
   const firstSentence = raw.match(/^.*?[.!?](\s|$)/)?.[0]?.trim() ?? raw
-  const text = firstSentence.length ? firstSentence : raw
+  const text = (firstSentence.length ? firstSentence : raw).replace(/(?<![.!])[.!]$/, '')
   if (text.length <= maxLength) return text
   const cut = text.slice(0, maxLength - 1)
   const space = cut.lastIndexOf(' ')

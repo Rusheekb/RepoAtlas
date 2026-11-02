@@ -83,23 +83,27 @@ interface RowProps {
 function PadRow({ gutterWidth }: { gutterWidth: string }) {
   return (
     <div className="flex" style={{ height: CODE_PADDING }} aria-hidden>
-      <span className="sticky left-0 z-[1] shrink-0 border-r border-line bg-surface-2" style={{ width: gutterWidth }} />
+      <span className="sticky left-0 z-1 shrink-0 border-r border-line bg-surface-2" style={{ width: gutterWidth }} />
     </div>
   )
 }
 
+/**
+ * The selected lines are the reader's "you are here" in the file: a soft survey-red wash with an accent mark at the
+ * edge of the gutter. Kept subtle so the code stays readable through it.
+ */
 const Row = memo(function Row({ n, text, tokens, selected, gutterWidth, selectable }: RowProps) {
   return (
-    <div className={cn('flex', selected && 'bg-brand-soft')} style={{ height: LINE_HEIGHT }} data-line={n} data-selected={selected || undefined}>
+    <div className={cn('flex', selected && 'bg-accent-soft')} style={{ height: LINE_HEIGHT }} data-line={n} data-selected={selected || undefined}>
       <span
         data-gutter={n}
         aria-hidden
         className={cn(
-          'sticky left-0 z-[1] shrink-0 border-r pr-3 pl-3 text-right tabular-nums select-none',
-          selected ? 'border-line bg-brand-soft font-semibold text-brand-text' : 'border-line bg-surface-2 text-ink-3',
+          'sticky left-0 z-1 shrink-0 border-r border-line pr-3 pl-3 text-right tabular-nums select-none transition-colors duration-150 ease-atlas',
+          selected ? 'bg-accent-soft text-accent-text' : 'bg-surface-2 text-ink-3',
           selectable && 'cursor-pointer hover:text-ink',
         )}
-        style={{ width: gutterWidth, boxShadow: selected ? 'inset 3px 0 0 var(--brand)' : undefined }}
+        style={{ width: gutterWidth, boxShadow: selected ? 'inset 2px 0 0 var(--accent)' : undefined }}
       >
         {n}
       </span>
@@ -203,9 +207,10 @@ export function CodeViewer(props: CodeViewerProps) {
         }
         return
       }
-      // The viewer grows with its content, so the page (or a parent) scrolls instead.
+      // The viewer grows with its content, so the page (or a parent) scrolls instead — but only when the line is
+      // actually out of view, so a short excerpt (e.g. in a tour) never pushes the page past its heading.
       const row = el.querySelector<HTMLElement>(`[data-line="${range.start}"]`)
-      row?.scrollIntoView?.({ block: mode === 'center' ? 'center' : 'nearest' })
+      row?.scrollIntoView?.({ block: 'nearest' })
     },
     [lines.length, firstLineNumber],
   )
@@ -355,7 +360,7 @@ export function CodeViewer(props: CodeViewerProps) {
         // outline-hidden (not outline-none): Windows High Contrast drops the ring, so it shows a real outline instead,
         // drawn inside the box because the card around the code clips anything outside it.
         'relative overflow-auto bg-surface font-mono text-[13px] leading-5 text-ink focus-visible:outline-hidden focus-visible:forced-colors:outline-offset-[-2px]',
-        'focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset',
+        'focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
         className,
       )}
       style={maxHeight ? { maxHeight } : undefined}

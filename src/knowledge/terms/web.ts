@@ -507,7 +507,7 @@ export const WEB_TERMS: GlossaryTerm[] = [
     term: 'Template',
     aliases: ['templates', 'templating', 'HTML template', 'HTML templates', 'template engine', 'template engines'],
     short: 'A page or document with blanks that the program fills in with real information.',
-    long: 'A welcome email template might say "Hi {{name}}, thanks for joining!" and the program swaps in each person’s name. Web frameworks use templates to build pages from data. "Template" can also mean a starter project to copy.',
+    long: 'A welcome email template might say "Hi {{name}}, thanks for joining" and the program swaps in each person’s name. Web frameworks use templates to build pages from data. "Template" can also mean a starter project to copy.',
     analogy: 'Like a mail-merge letter with spaces for each person’s details.',
     category: 'web',
     related: ['html', 'render'],

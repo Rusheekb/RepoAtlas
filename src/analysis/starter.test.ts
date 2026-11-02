@@ -121,6 +121,8 @@ describe('buildStarterConcepts', () => {
       expect(c.summary.length).toBeGreaterThan(10)
       expect(c.analogy.length).toBeGreaterThan(10)
       for (const p of c.files) expect(fixture().files[p]).toBeDefined()
+      // Only the emoji field may hold an emoji (the interface shows an icon by category instead).
+      expect(`${c.name} ${c.summary} ${c.explanation} ${c.analogy}`).not.toMatch(/\p{Extended_Pictographic}|!/u)
     }
 
     const project = map.concepts.find((c) => c.id === 'the-project')!
@@ -179,9 +181,12 @@ describe('buildStarterTours', () => {
     for (const t of tours) {
       expect(t.source).toBe('starter')
       expect(t.steps.length).toBeGreaterThanOrEqual(2)
+      // Plain text throughout: the tour's emoji field is data, and step titles carry no role or module emoji.
+      expect(`${t.title} ${t.question} ${t.summary}`).not.toMatch(/\p{Extended_Pictographic}|!/u)
       for (const s of t.steps) {
         expect(s.title.length).toBeGreaterThan(2)
         expect(s.explanation.length).toBeGreaterThan(20)
+        expect(`${s.title} ${s.explanation}`).not.toMatch(/\p{Extended_Pictographic}|!/u)
         if (s.snippet) {
           expect(s.file).not.toBeNull()
           expect(contents[s.file as string]).toContain(s.snippet)
@@ -212,6 +217,8 @@ describe('buildStarterTours', () => {
 
     const parts = tours.find((t) => t.id === 'main-parts')!
     expect(parts.steps[0].explanation).toContain('keeps track of the books you own')
+    expect(parts.steps.find((s) => s.moduleId === 'src/routes')?.title).toBe('routes')
+    expect(begin.steps[begin.steps.length - 1].explanation).toContain('**How it connects**')
     for (const s of parts.steps.slice(1, -1)) expect(s.moduleId).not.toBeNull()
   })
 

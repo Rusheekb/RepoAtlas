@@ -1,12 +1,13 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { RefreshCw, Sparkles, X } from 'lucide-react'
+import { Binary, CloudOff, FileMinus, FileStack, PenLine, RefreshCw, X, type LucideIcon } from 'lucide-react'
 import { CodeViewer, MAX_HIGHLIGHT_LINES } from '@/components/code/CodeViewer'
 import { grammarFor } from '@/components/code/languages'
 import { GitHubMark, OutboundLink } from '@/components/shell/bits'
 import { useMediaQuery } from '@/components/shell/media'
 import { makeReadmeResolver } from '@/components/shell/urls'
-import { Badge, Button, Markdown, Segmented } from '@/components/ui'
+import { Button, IconButton, Markdown, Segmented } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { Icon, RoleIcon } from '@/components/ui/icons'
 import { formatBytes, formatNumber } from '@/core/format'
 import { ROLE_INFO } from '@/core/labels'
 import type { AnalyzedFile } from '@/core/types'
@@ -36,24 +37,25 @@ type MarkdownMode = 'formatted' | 'raw'
 
 function Skeleton() {
   return (
-    <div className="space-y-2.5 p-5" role="status" aria-label="Loading the code">
+    <div className="space-y-3 p-5" role="status" aria-label="Loading the code">
       {[62, 80, 45, 90, 70, 38, 84, 56].map((w, i) => (
-        <div key={i} className="h-3 rounded-full bg-surface-3 motion-safe:animate-pulse" style={{ width: `${w}%` }} />
+        <div key={i} className="h-3 rounded-sm bg-surface-3 motion-safe:animate-atlas-pulse" style={{ width: `${w}%` }} />
       ))}
       <p className="pt-2 text-sm text-ink-3">Downloading this file from GitHub…</p>
     </div>
   )
 }
 
-function Notice({ emoji, title, children, actions }: { emoji: string; title: string; children: ReactNode; actions?: ReactNode }) {
+/** A calm message in place of the code (same shape as the kit's EmptyState: a line icon in a quiet tile, a title, a note). */
+function Notice({ icon, title, children, actions }: { icon: LucideIcon; title: string; children: ReactNode; actions?: ReactNode }) {
   return (
     <div className="flex h-full min-h-60 flex-col items-center justify-center px-6 py-10 text-center">
-      <div className="text-4xl leading-none" aria-hidden>
-        {emoji}
+      <div className="flex size-10 items-center justify-center rounded-xl bg-surface-2 text-ink-2">
+        <Icon as={icon} size={18} />
       </div>
-      <h3 className="mt-3 text-lg font-semibold text-ink">{title}</h3>
-      <div className="mt-1.5 max-w-md text-sm leading-relaxed text-ink-2">{children}</div>
-      {actions && <div className="mt-4 flex flex-wrap justify-center gap-2">{actions}</div>}
+      <h3 className="mt-4 text-lg font-medium text-ink">{title}</h3>
+      <div className="mt-2 max-w-md text-sm leading-relaxed text-ink-2">{children}</div>
+      {actions && <div className="mt-5 flex flex-wrap justify-center gap-2">{actions}</div>}
     </div>
   )
 }
@@ -65,6 +67,7 @@ export function CodePane(props: CodePaneProps) {
   const touch = useMediaQuery('(pointer: coarse)', false)
   const [failedPreview, setFailedPreview] = useState<string | null>(null)
   const crumbs = breadcrumbs(file.path)
+  const roleId = file.isEntry ? 'entry' : file.role
   const role = file.isEntry ? ROLE_INFO.entry : (ROLE_INFO[file.role] ?? ROLE_INFO.other)
   const ghUrl = githubFileUrl(owner, repo, gitRef, file.path, highlight?.start)
   const isMd = isMarkdownPath(file.path)
@@ -77,7 +80,7 @@ export function CodePane(props: CodePaneProps) {
 
   const githubButton = (
     <OutboundLink href={ghUrl} className="text-sm">
-      <GitHubMark className="size-3.5" /> Open on GitHub
+      <GitHubMark className="size-4" /> Open on GitHub
     </OutboundLink>
   )
 
@@ -86,7 +89,7 @@ export function CodePane(props: CodePaneProps) {
   else if (load.status === 'error') {
     body = (
       <Notice
-        emoji="📡"
+        icon={CloudOff}
         title="This file didn’t arrive"
         actions={
           <>
@@ -110,29 +113,29 @@ export function CodePane(props: CodePaneProps) {
           src={preview}
           alt={`Preview of ${file.name}`}
           onError={() => setFailedPreview(file.path)}
-          className="max-h-[50vh] max-w-full rounded-lg border border-line bg-surface-2 object-contain p-2"
+          className="max-h-[50vh] max-w-full rounded-xl border border-line bg-surface-2 object-contain p-2"
           loading="lazy"
           referrerPolicy="no-referrer"
         />
         <p className="max-w-md text-center text-sm text-ink-2">This is a picture, not code, so there’s nothing to read line by line. Projects keep images like this for logos, icons and screenshots.</p>
       </div>
     ) : (
-      <Notice emoji="🖼️" title="Nothing to read here" actions={githubButton}>
+      <Notice icon={Binary} title="Nothing to read here" actions={githubButton}>
         This file isn’t text: it’s something like an image, a font, or a program that has already been packaged up for computers. People
         don’t read these line by line.
       </Notice>
     )
   } else if (load.status === 'too-large') {
     body = (
-      <Notice emoji="📚" title="This file is too big to show here" actions={githubButton}>
+      <Notice icon={FileStack} title="This file is too big to show here" actions={githubButton}>
         It’s {formatBytes(load.size)}, which would make your browser slow. Very big files are usually data or code made by a tool, not
         something people write by hand.
       </Notice>
     )
   } else if (content != null && content.trim() === '') {
     body = (
-      <Notice emoji="🫙" title="This file is empty">
-        That’s often on purpose: some tools just need a file to exist. For example, an empty <code className="font-mono text-[0.9em]">__init__.py</code>{' '}
+      <Notice icon={FileMinus} title="This file is empty">
+        That’s often on purpose: some tools just need a file to exist. For example, an empty <code className="font-mono text-[13px] text-ink">__init__.py</code>{' '}
         tells Python that a folder holds code.
       </Notice>
     )
@@ -169,7 +172,7 @@ export function CodePane(props: CodePaneProps) {
     >
       <header className="border-b border-line px-4 py-3">
         <nav aria-label="Where this file lives" className="min-w-0">
-          <ol className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 font-mono text-[13px]">
+          <ol className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 font-mono text-[13px] leading-5">
             {crumbs.map((c, i) => (
               <li key={c.path} className="flex min-w-0 items-center gap-1">
                 {i > 0 && (
@@ -178,14 +181,14 @@ export function CodePane(props: CodePaneProps) {
                   </span>
                 )}
                 {c.isFile ? (
-                  <span className="truncate font-semibold text-ink" aria-current="page">
+                  <span className="truncate font-medium text-ink" aria-current="page">
                     {c.name}
                   </span>
                 ) : (
                   <button
                     type="button"
                     onClick={() => onRevealFolder(c.path)}
-                    className="truncate rounded text-ink-2 hover:text-brand-text hover:underline"
+                    className="truncate rounded-sm text-ink-2 underline-offset-2 transition-colors duration-150 ease-atlas hover:text-ink hover:underline"
                     title={`Show the “${c.path}” folder in the file list`}
                   >
                     {c.name}
@@ -195,13 +198,24 @@ export function CodePane(props: CodePaneProps) {
             ))}
           </ol>
         </nav>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-2">
-          <Badge tone="brand" title={role.description}>
-            <span aria-hidden>{role.emoji}</span> {role.label}
-          </Badge>
-          {file.language && <Badge>{file.language}</Badge>}
-          {lineCount != null && lineCount > 0 && <span className="text-xs text-ink-3 tabular-nums">{formatNumber(lineCount)} {lineCount === 1 ? 'line' : 'lines'}</span>}
-          <span className="text-xs text-ink-3">{formatBytes(file.size)}</span>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="inline-flex items-center gap-2 text-sm text-ink-2" title={role.description}>
+            <RoleIcon role={roleId} className="text-ink-3" />
+            {role.label}
+          </span>
+          <span className="flex flex-wrap items-center gap-x-2 text-meta">
+            {file.language && <span>{file.language}</span>}
+            {lineCount != null && lineCount > 0 && (
+              <>
+                {file.language && <span aria-hidden>·</span>}
+                <span>
+                  {formatNumber(lineCount)} {lineCount === 1 ? 'line' : 'lines'}
+                </span>
+              </>
+            )}
+            {(file.language || (lineCount != null && lineCount > 0)) && <span aria-hidden>·</span>}
+            <span>{formatBytes(file.size)}</span>
+          </span>
           <span className="ml-auto flex items-center gap-3">
             {isMd && content != null && content.trim() !== '' && (
               <Segmented<MarkdownMode>
@@ -218,7 +232,7 @@ export function CodePane(props: CodePaneProps) {
             {githubButton}
           </span>
         </div>
-        {note && <p className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-xs leading-relaxed text-ink-2">{note}</p>}
+        {note && <p className="mt-3 rounded-lg bg-surface-2 px-3 py-2 text-xs leading-relaxed text-ink-2">{note}</p>}
       </header>
 
       <div className="relative min-h-0 flex-1">
@@ -226,41 +240,25 @@ export function CodePane(props: CodePaneProps) {
         {highlight && canSelect && (
           <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center px-4">
             <div
-              className="pointer-events-auto flex items-center gap-1 rounded-full border border-line bg-surface p-1 shadow-lg motion-safe:animate-[atlas-pop_160ms_ease-out]"
+              className="pointer-events-auto flex items-center gap-1 rounded-xl border border-line bg-surface p-1 shadow-lg motion-safe:animate-[atlas-pop_180ms_cubic-bezier(0.22,1,0.36,1)]"
               data-testid="explain-lines"
             >
-              <button
-                type="button"
-                onClick={() => onExplainLines(highlight)}
-                className="inline-flex h-9 items-center gap-2 rounded-full bg-brand px-4 text-sm font-semibold text-brand-ink shadow-sm hover:bg-brand-hover"
-              >
-                <Sparkles className="size-4" aria-hidden />
+              <Button variant="primary" icon={<Icon as={PenLine} />} onClick={() => onExplainLines(highlight)}>
                 Explain {describeRange(highlight)}
-              </button>
-              <button
-                type="button"
-                onClick={() => onSelectLines(null)}
-                aria-label="Clear the selected lines"
-                title="Clear the selection"
-                className="inline-flex size-9 items-center justify-center rounded-full text-ink-2 hover:bg-surface-2 hover:text-ink"
-              >
-                <X className="size-4" aria-hidden />
-              </button>
+              </Button>
+              <IconButton aria-label="Clear the selected lines" title="Clear the selection" icon={<Icon as={X} />} onClick={() => onSelectLines(null)} />
             </div>
           </div>
         )}
       </div>
 
       {canSelect && (
-        <footer className="border-t border-line bg-surface-2/60 px-4 py-2 text-xs leading-relaxed text-ink-3 sm:truncate">
-          {plainBecauseLong ? (
-            <span>This file is very long, so it’s shown without colors to keep things fast. </span>
-          ) : null}
+        <footer className="border-t border-line bg-surface-2 px-4 py-2 text-xs leading-relaxed text-ink-3 sm:truncate">
+          {plainBecauseLong ? <span>Shown without colors because this file is very long · </span> : null}
           <span>
-            <span aria-hidden>💡 </span>
             {touch
-              ? 'Tap a line number, then tap another to pick a range. Then ask what those lines do.'
-              : 'Click line numbers to pick lines (Shift-click or drag for more), then ask what they do.'}
+              ? 'Tap a line number, then another to pick a range, then ask what those lines do'
+              : 'Click line numbers to pick lines (Shift-click or drag for more), then ask what they do'}
           </span>
         </footer>
       )}

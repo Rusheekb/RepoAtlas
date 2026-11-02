@@ -100,14 +100,14 @@ describe('RepoLayout', () => {
     expect(within(screen.getByRole('navigation', { name: 'Views' })).getByRole('link', { name: /the big picture/i })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('main')).toBeInTheDocument()
     expect(useProgress.getState().recent[0]).toMatchObject({ fullName: 'acme/shop', description: 'A tiny online shop' })
-    expect(document.title).toBe('The Big Picture · acme/shop · RepoAtlas')
+    expect(document.title).toBe('The big picture · acme/shop · RepoAtlas')
   })
 
   it('names each view in the tab title and moves focus to its heading when the reader switches views', async () => {
     const { router } = renderRepo('/gh/acme/shop')
     // The first view after loading leaves focus alone.
     expect(document.activeElement).toBe(document.body)
-    expect(document.title).toBe('The Big Picture · acme/shop · RepoAtlas')
+    expect(document.title).toBe('The big picture · acme/shop · RepoAtlas')
     await act(() => router.navigate('/gh/acme/shop/glossary'))
     expect(document.title).toBe('Glossary · acme/shop · RepoAtlas')
     expect(screen.getByRole('heading', { level: 1, name: /glossary/i })).toHaveFocus()
@@ -261,7 +261,7 @@ describe('focusViewHeading', () => {
     document.body.append(main)
     const stop = focusViewHeading(main)
     const h1 = document.createElement('h1')
-    h1.textContent = 'How It Connects'
+    h1.textContent = 'How it connects'
     main.append(h1)
     await new Promise((r) => setTimeout(r, 0))
     expect(h1).toHaveFocus()

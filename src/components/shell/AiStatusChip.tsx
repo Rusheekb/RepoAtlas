@@ -1,11 +1,19 @@
-import { KeyRound, Sparkles } from 'lucide-react'
+import { KeyRound } from 'lucide-react'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import { MODELS } from '@/core/labels'
 import { useSettings } from '@/state/settings'
 import { useUi } from '@/state/ui'
 import { useHasClaudeKey } from './media'
 
-/** "Claude: on" when a key is saved, otherwise an inviting "Add Claude key". Both open Settings → Claude AI. */
+/** One quiet header control for both states: a hairline button, 32px tall, the radius of the segmented control beside it. */
+const CHIP_CLASS =
+  'inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-medium text-ink-2 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink'
+
+/** On phones the compact chip is an icon-only control: the same 40px ghost square as the header's other icon buttons. */
+const COMPACT_CLASS = 'max-sm:size-10 max-sm:justify-center max-sm:border-transparent max-sm:bg-transparent max-sm:px-0'
+
+/** "Claude: on" when a key is saved, otherwise "Add Claude key". Both open Settings → Claude AI. */
 export function AiStatusChip({ className, compact }: { className?: string; compact?: boolean }) {
   const hasKey = useHasClaudeKey()
   const model = useSettings((s) => s.model)
@@ -19,15 +27,10 @@ export function AiStatusChip({ className, compact }: { className?: string; compa
         onClick={() => openSettings('ai')}
         title={`Claude is ready (${modelLabel}). Click to change AI settings.`}
         aria-label={`Claude: on (${modelLabel}). Open AI settings`}
-        className={cn(
-          'inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink',
-          className,
-        )}
+        className={cn(CHIP_CLASS, compact && COMPACT_CLASS, className)}
       >
-        <span className="relative flex size-2" aria-hidden>
-          <span className="absolute inline-flex size-full rounded-full bg-good opacity-60 motion-safe:animate-ping" />
-          <span className="relative inline-flex size-2 rounded-full bg-good" />
-        </span>
+        {/* A static status dot: the key is saved. Nothing here is live, so nothing moves. */}
+        <span className="size-1.5 shrink-0 rounded-full bg-good" aria-hidden />
         <span className={cn(compact && 'max-sm:sr-only')}>Claude: on</span>
       </button>
     )
@@ -37,13 +40,10 @@ export function AiStatusChip({ className, compact }: { className?: string; compa
     <button
       type="button"
       onClick={() => openSettings('ai')}
-      title="Add your own Claude API key to unlock in-depth explanations, chat and quizzes."
-      className={cn(
-        'inline-flex h-8 items-center gap-1.5 rounded-full bg-brand-soft px-3 text-xs font-semibold text-brand-text transition hover:brightness-95 dark:hover:brightness-125',
-        className,
-      )}
+      title="Add your own Claude API key for in-depth explanations, chat and quizzes."
+      className={cn(CHIP_CLASS, 'text-ink', compact && COMPACT_CLASS, className)}
     >
-      {compact ? <KeyRound className="size-3.5" aria-hidden /> : <Sparkles className="size-3.5" aria-hidden />}
+      <Icon as={KeyRound} size={14} className={cn("text-ink-3", compact && "max-sm:size-4.5")} />
       <span className={cn(compact && 'max-sm:sr-only')}>Add Claude key</span>
     </button>
   )

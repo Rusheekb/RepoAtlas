@@ -59,9 +59,9 @@ export default function CodeMapPage() {
   const info = VIEW_INFO.codemap
 
   return (
-    <div className="flex h-full min-h-[560px] shrink-0 flex-col gap-4 p-4 sm:p-6" data-testid="codemap-page">
+    <div className="flex h-full min-h-140 shrink-0 flex-col gap-4 p-4 sm:p-6" data-testid="codemap-page">
       <ViewHeader
-        emoji={info.emoji}
+        view="codemap"
         title={info.label}
         hint={HINT}
         actions={
@@ -71,8 +71,8 @@ export default function CodeMapPage() {
             value={colorBy}
             onChange={setColorBy}
             options={[
-              { value: 'layer', label: '🎨 Kind of code', title: 'Color each file by the job its code does' },
-              { value: 'language', label: '🔤 Language', title: 'Color each file by its programming language' },
+              { value: 'layer', label: 'Kind of code', title: 'Color each file by the job its code does' },
+              { value: 'language', label: 'Language', title: 'Color each file by its programming language' },
             ]}
           />
         }
@@ -80,7 +80,7 @@ export default function CodeMapPage() {
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <section
           aria-label="Map of the project’s files"
-          className="flex min-h-[440px] min-w-0 flex-1 flex-col rounded-2xl border border-line bg-surface p-3 shadow-sm sm:p-4"
+          className="flex min-h-110 min-w-0 flex-1 flex-col rounded-2xl border border-line bg-surface p-3 shadow-sm sm:p-4"
         >
           <CodeTreemap
             className="min-h-0 flex-1"
@@ -94,7 +94,7 @@ export default function CodeMapPage() {
           />
         </section>
         <CodeMapSidePanel
-          className="shrink-0 lg:w-80 xl:w-[22rem]"
+          className="shrink-0 lg:w-80 xl:w-88"
           folder={rootPath}
           stats={stats}
           biggest={biggest}

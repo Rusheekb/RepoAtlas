@@ -4,6 +4,7 @@ import type { AiStatus } from '@/ai'
 import { RichText } from '@/components/shell/bits'
 import { Button, Markdown } from '@/components/ui'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import type { ChatMessage } from '@/core/types'
 
 export interface ChatBubbleProps {
@@ -26,13 +27,14 @@ function waitingText(status: AiStatus | null): string {
   return 'Asking Claude…'
 }
 
+/** Waiting for the first words: three dots that move while Claude works (a live indicator, so it may loop). */
 function TypingDots() {
   return (
     <span className="inline-flex items-center gap-1" aria-hidden>
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="size-1.5 rounded-full bg-brand motion-safe:animate-[atlas-dot_1.2s_ease-in-out_infinite]"
+          className="size-1.5 rounded-full bg-ink-3 motion-safe:animate-[atlas-dot_1.2s_ease-in-out_infinite]"
           style={{ animationDelay: `${i * 0.15}s` }}
         />
       ))}
@@ -58,20 +60,23 @@ function CopyAnswer({ text }: { text: string }) {
           () => undefined,
         )
       }}
-      className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-ink-3 hover:bg-surface-2 hover:text-ink"
+      className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-ink-3 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
     >
-      {copied ? <Check className="size-3.5 text-good-text" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+      <Icon as={copied ? Check : Copy} size={14} />
       {copied ? 'Copied' : 'Copy answer'}
     </button>
   )
 }
 
-/** One message in the "Ask a Question" chat: the reader's question on the right, Claude's markdown answer on the left. */
+/**
+ * One message in the "Ask a Question" chat: the reader's question on the right in a raised paper bubble, Claude's
+ * markdown answer on the left on the surface.
+ */
 export const ChatBubble = memo(function ChatBubble({ message, live, aiStatus, isCodeLink, onCodeClick, onRetry, onOpenSettings, keyProblem }: ChatBubbleProps) {
   if (message.role === 'user') {
     return (
-      <li className="flex justify-end motion-safe:animate-[atlas-pop_180ms_ease-out]" data-role="user">
-        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-brand px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-brand-ink shadow-sm sm:max-w-[75%]">
+      <li className="flex justify-end" data-role="user">
+        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-surface-3 px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-ink sm:max-w-[75%]">
           <span className="sr-only">You asked: </span>
           <RichText text={message.content} />
         </div>
@@ -81,20 +86,17 @@ export const ChatBubble = memo(function ChatBubble({ message, live, aiStatus, is
 
   const empty = !message.content.trim()
   return (
-    <li className="flex gap-3" data-role="assistant">
-      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-soft text-base" aria-hidden>
-        ✨
-      </span>
+    <li className="flex" data-role="assistant">
       <div className="min-w-0 flex-1">
-        <div className={cn('rounded-2xl rounded-tl-md border border-line bg-surface px-4 py-3 shadow-sm', message.error && empty && 'bg-surface-2')}>
+        <div className={cn('rounded-2xl rounded-tl-md border border-line bg-surface px-5 py-4', message.error && empty && 'bg-surface-2')}>
           <span className="sr-only">Claude answered: </span>
           {empty && live ? (
-            <p className="flex items-center gap-2.5 text-sm text-ink-2" role="status">
+            <p className="flex items-center gap-3 text-sm text-ink-2" role="status">
               <TypingDots />
               {waitingText(aiStatus)}
             </p>
           ) : empty && !message.error ? (
-            <p className="text-sm text-ink-3 italic">No answer was written.</p>
+            <p className="text-sm text-ink-3">No answer was written</p>
           ) : (
             !empty && (
               <Markdown isCodeLink={isCodeLink} onCodeClick={onCodeClick} streaming={live}>
@@ -104,15 +106,15 @@ export const ChatBubble = memo(function ChatBubble({ message, live, aiStatus, is
           )}
           {message.error && (
             <div className={cn('flex flex-wrap items-center gap-2', !empty && 'mt-3 border-t border-line pt-3')} role="alert">
-              <AlertTriangle className="size-4 shrink-0 text-warn-text" aria-hidden />
+              <Icon as={AlertTriangle} className="text-warn-text" />
               <p className="min-w-0 flex-[1_1_12rem] text-sm text-ink">{message.error}</p>
               {keyProblem && onOpenSettings ? (
-                <Button size="sm" variant="primary" onClick={onOpenSettings} icon={<Settings className="size-4" aria-hidden />}>
+                <Button size="sm" variant="primary" onClick={onOpenSettings} icon={<Icon as={Settings} />}>
                   Open Settings
                 </Button>
               ) : (
                 onRetry && (
-                  <Button size="sm" variant="secondary" onClick={onRetry} icon={<RotateCcw className="size-3.5" aria-hidden />}>
+                  <Button size="sm" variant="secondary" onClick={onRetry} icon={<Icon as={RotateCcw} />}>
                     Ask again
                   </Button>
                 )
@@ -121,7 +123,7 @@ export const ChatBubble = memo(function ChatBubble({ message, live, aiStatus, is
           )}
         </div>
         {!live && !empty && (
-          <div className="mt-1 flex">
+          <div className="mt-1 flex px-1">
             <CopyAnswer text={message.content} />
           </div>
         )}

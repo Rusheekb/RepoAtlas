@@ -110,7 +110,7 @@ describe('tech stack rows', () => {
 
   it('writes short hints', () => {
     expect(techHint(TECH[0])).toBe('Like LEGO bricks for web pages')
-    expect(techHint({ description: 'Runs checks. Then more.' })).toBe('Runs checks.')
+    expect(techHint({ description: 'Runs checks. Then more.' })).toBe('Runs checks')
     const long = techHint({ description: 'word '.repeat(40) }, 30)
     expect(long.length).toBeLessThanOrEqual(30)
     expect(long.endsWith('…')).toBe(true)

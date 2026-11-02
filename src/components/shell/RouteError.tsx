@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
-import { Home, RotateCcw } from 'lucide-react'
+import { CircleAlert, Home, RefreshCw, RotateCcw } from 'lucide-react'
 import { isRouteErrorResponse, useRouteError } from 'react-router'
 import { Button } from '@/components/ui/Button'
-import { LogoMark } from './Logo'
+import { Icon } from '@/components/ui/icons'
+import { Wordmark } from './Logo'
 
 const RELOAD_FLAG = 'repoatlas:reloaded-for-update'
 
@@ -56,32 +57,37 @@ export function RouteError() {
 
   return (
     <div className="flex min-h-full items-center justify-center bg-canvas px-4 py-16 text-ink">
-      <div className="max-w-md text-center" role="alert">
-        <LogoMark className="mx-auto size-12" />
-        <h1 className="mt-6 text-2xl font-semibold">{stale ? 'RepoAtlas was just updated' : 'Something went wrong'}</h1>
-        <p className="mt-3 text-ink-2">
-          {stale
-            ? 'A newer version was published while this page was open. Reloading the page will bring you up to date.'
-            : 'Sorry — RepoAtlas hit a problem it didn’t expect. Reloading the page usually fixes it. Your settings and saved answers are safe.'}
-        </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
-          <Button variant="primary" icon={<RotateCcw className="size-4" aria-hidden />} onClick={() => window.location.reload()}>
-            Reload the page
-          </Button>
-          <Button
-            icon={<Home className="size-4" aria-hidden />}
-            onClick={() => {
-              window.location.hash = '#/'
-              window.location.reload()
-            }}
-          >
-            Go to the home page
-          </Button>
+      <div className="w-full max-w-lg">
+        <Wordmark />
+        <div className="mt-6 rounded-2xl border border-line bg-surface p-6 sm:p-8" role="alert">
+          <span className="flex size-10 items-center justify-center rounded-[10px] border border-line bg-surface-2 text-ink-2" aria-hidden>
+            <Icon as={stale ? RefreshCw : CircleAlert} size={20} />
+          </span>
+          <h1 className="mt-5 text-page-title text-balance">{stale ? 'RepoAtlas was just updated' : 'Something went wrong'}</h1>
+          <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
+            {stale
+              ? 'A newer version was published while this page was open. Reloading the page will bring you up to date.'
+              : 'Sorry — RepoAtlas hit a problem it didn’t expect. Reloading the page usually fixes it. Your settings and saved answers are safe.'}
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <Button variant="primary" icon={<Icon as={RotateCcw} />} onClick={() => window.location.reload()}>
+              Reload the page
+            </Button>
+            <Button
+              icon={<Icon as={Home} />}
+              onClick={() => {
+                window.location.hash = '#/'
+                window.location.reload()
+              }}
+            >
+              Go to the home page
+            </Button>
+          </div>
+          <details className="mt-6 rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm text-ink-3">
+            <summary className="cursor-pointer font-medium text-ink-2">Technical details</summary>
+            <pre className="mt-2 overflow-x-auto font-mono text-xs leading-5 whitespace-pre-wrap">{describe(error)}</pre>
+          </details>
         </div>
-        <details className="mt-8 text-left text-sm text-ink-3">
-          <summary className="cursor-pointer text-center">Technical details</summary>
-          <pre className="mt-2 overflow-x-auto rounded-xl border border-line bg-surface-2 p-3 font-mono text-xs whitespace-pre-wrap">{describe(error)}</pre>
-        </details>
       </div>
     </div>
   )

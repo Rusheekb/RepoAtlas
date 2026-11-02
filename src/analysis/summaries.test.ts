@@ -162,13 +162,16 @@ function analysisFor(overrides: Partial<RepoAnalysis> = {}): Omit<RepoAnalysis, 
 describe('writeOverview', () => {
   it('writes all five sections with real names from the analysis', () => {
     const md = writeOverview(analysisFor())
-    for (const h of ['## What is this?', "## What it's built with", "## How it's organized", '## Where it starts', '## Good to know']) expect(md).toContain(h)
+    for (const h of ['## What is this?', '## What it’s built with', '## How it’s organized', '## Where it starts', '## Good to know']) expect(md).toContain(h)
     expect(md).toContain('**shop** is a **web application**')
     expect(md).toContain('“Shop is a friendly little online store where people can browse products and check out.”')
     expect(md).toContain('**TypeScript** (90% of the code), with some **CSS** (10%)')
     expect(md).toContain('- **React** — React builds screens from reusable pieces.')
     expect(md).toContain('helper tools like Vite')
-    expect(md).toContain('**components** — reusable screen pieces')
+    // Parts are listed by name only: the module's emoji stays in the data and never reaches the prose.
+    expect(md).toContain('- **components** — reusable screen pieces')
+    expect(md).not.toMatch(/\p{Extended_Pictographic}/u)
+    expect(md).toContain('Open **How it connects** to see which parts rely on which.')
     expect(md).toContain('`src/main.tsx` — The app’s screens start here')
     expect(md).toContain('3 test files automatically check')
     expect(md).toContain('`src/lib/api.ts`, used by 3 other files')

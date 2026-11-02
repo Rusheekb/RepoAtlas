@@ -19,7 +19,7 @@ function input() {
 describe('HomePage', () => {
   it('shows the name, tagline and examples', () => {
     renderAt(<HomePage />)
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('See how any GitHub project works — explained visually, in plain English.')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('See how any GitHub project works, in plain English')
     expect(screen.getAllByText('RepoAtlas').length).toBeGreaterThan(0)
     for (const name of ['Express', 'Flask', 'Gin', 'HTTPie', 'Excalidraw', 'RepoAtlas itself']) {
       expect(screen.getByText(name)).toBeInTheDocument()

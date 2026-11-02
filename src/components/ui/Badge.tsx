@@ -6,14 +6,14 @@ import { cn } from './cn'
 export function Badge({ className, tone = 'neutral', ...rest }: HTMLAttributes<HTMLSpanElement> & { tone?: 'neutral' | 'brand' | 'good' | 'warn' | 'bad' }) {
   const tones = {
     neutral: 'bg-surface-2 text-ink-2 border-line',
-    brand: 'bg-brand-soft text-brand-text border-transparent',
+    brand: 'bg-surface-2 text-ink border-line',
     good: 'bg-surface-2 text-good-text border-line',
     warn: 'bg-surface-2 text-warn-text border-line',
     bad: 'bg-surface-2 text-bad-text border-line',
   }
   return (
     <span
-      className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap', tones[tone], className)}
+      className={cn('inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap', tones[tone], className)}
       {...rest}
     />
   )
@@ -25,9 +25,9 @@ export function LayerBadge({ layer, compact, className }: { layer: Layer; compac
   return (
     <span
       title={compact ? info.label : info.description}
-      className={cn('inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2 py-0.5 text-xs font-medium text-ink-2', className)}
+      className={cn('inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-0.5 text-xs font-medium text-ink-2', className)}
     >
-      <span className="size-2.5 shrink-0 rounded-full" style={{ background: info.color }} aria-hidden />
+      <span className="size-2 shrink-0 rounded-full" style={{ background: info.color }} aria-hidden />
       {compact ? info.short : info.label}
     </span>
   )
@@ -39,7 +39,7 @@ export function LayerLegend({ layers, className }: { layers: Layer[]; className?
     <ul className={cn('flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-ink-2', className)} aria-label="Color legend">
       {layers.map((l) => (
         <li key={l} className="inline-flex items-center gap-1.5" title={LAYER_INFO[l].description}>
-          <span className="size-2.5 rounded-full" style={{ background: LAYER_INFO[l].color }} aria-hidden />
+          <span className="size-2 rounded-full" style={{ background: LAYER_INFO[l].color }} aria-hidden />
           {LAYER_INFO[l].label}
         </li>
       ))}

@@ -1,8 +1,9 @@
 import { useDeferredValue, useId, useMemo, useState } from 'react'
-import { ChevronDown, PanelLeftClose, PanelLeftOpen, Search, X } from 'lucide-react'
+import { ChevronDown, FolderTree, PanelLeftClose, PanelLeftOpen, Search, X } from 'lucide-react'
 import { FileTree } from '@/components/code/FileTree'
 import { filterFiles, queryTerms } from '@/components/code/fileTree'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import { formatNumber } from '@/core/format'
 import type { AnalyzedFile } from '@/core/types'
 
@@ -45,32 +46,30 @@ export function FilesPane({ files, selectedPath, onSelect, revealPath, isSeen, c
           onClick={() => onOpenChange(!open)}
           aria-expanded={open}
           aria-controls={bodyId}
-          className="flex w-full items-center gap-2 px-4 py-3 text-left"
+          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 ease-atlas hover:bg-surface-2"
         >
-          <span aria-hidden>📂</span>
+          <Icon as={FolderTree} className="text-ink-3" />
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-ink">Browse files</span>
+            <span className="block text-sm font-medium text-ink">Browse files</span>
             <span className="block truncate text-xs text-ink-3">
-              {formatNumber(files.length)} files{selectedPath ? ` · now reading ${selectedPath.split('/').pop()}` : ''}
+              <span className="tabular-nums">{formatNumber(files.length)}</span> files{selectedPath ? ` · now reading ${selectedPath.split('/').pop()}` : ''}
             </span>
           </span>
-          <ChevronDown className={cn('size-4 shrink-0 text-ink-3 motion-safe:transition-transform', open && 'rotate-180')} aria-hidden />
+          <Icon as={ChevronDown} className={cn('text-ink-3 transition-transform duration-150 ease-atlas', open && 'rotate-180')} />
         </button>
       ) : (
-        <div className="flex items-center gap-2 pt-2.5 pr-2 pl-4">
-          <h2 className="text-sm font-semibold text-ink">
-            <span aria-hidden>📂 </span>Files
-          </h2>
-          <span className="text-xs text-ink-3 tabular-nums">{formatNumber(files.length)}</span>
+        <div className="flex h-12 shrink-0 items-center gap-2 pr-2 pl-4">
+          <h2 className="text-sm font-medium text-ink">Files</h2>
+          <span className="text-meta">{formatNumber(files.length)}</span>
           {onHide && (
             <button
               type="button"
               onClick={onHide}
               aria-label="Hide the file list"
               title="Hide the file list to give the code more room"
-              className="ml-auto flex size-8 items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink"
+              className="ml-auto flex size-8 items-center justify-center rounded-lg text-ink-3 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
             >
-              <PanelLeftClose className="size-4" aria-hidden />
+              <Icon as={PanelLeftClose} />
             </button>
           )}
         </div>
@@ -78,12 +77,12 @@ export function FilesPane({ files, selectedPath, onSelect, revealPath, isSeen, c
 
       {showBody && (
         <div id={bodyId} className={cn('flex min-h-0 flex-1 flex-col', collapsible && 'border-t border-line')}>
-          <div className="px-3 pt-3 pb-2">
+          <div className={cn('px-2 pb-2', collapsible && 'pt-2')}>
             <label htmlFor={inputId} className="sr-only">
               Find a file by name
             </label>
             <div className="relative">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-3" aria-hidden />
+              <Icon as={Search} className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ink-3" />
               <input
                 id={inputId}
                 type="search"
@@ -102,24 +101,24 @@ export function FilesPane({ files, selectedPath, onSelect, revealPath, isSeen, c
                     }
                   }
                 }}
-                placeholder="Find a file…"
+                placeholder="Find a file"
                 autoComplete="off"
                 spellCheck={false}
-                className="h-9 w-full rounded-xl border border-line-strong bg-surface pr-8 pl-9 text-sm text-ink placeholder:text-ink-3 focus:border-brand focus:outline-hidden [&::-webkit-search-cancel-button]:hidden"
+                className="h-9 w-full rounded-lg border border-line-strong bg-surface pr-8 pl-8 text-sm text-ink transition-colors duration-150 ease-atlas placeholder:text-ink-3 focus:border-ink-3 focus:outline-hidden [&::-webkit-search-cancel-button]:hidden"
               />
               {query && (
                 <button
                   type="button"
                   onClick={() => setQuery('')}
                   aria-label="Clear the search"
-                  className="absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink"
+                  className="absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-ink-3 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
                 >
-                  <X className="size-3.5" aria-hidden />
+                  <Icon as={X} size={14} />
                 </button>
               )}
             </div>
             {matchCount != null && (
-              <p className="mt-1.5 px-1 text-xs text-ink-3" aria-hidden>
+              <p className="mt-2 px-2 text-meta" aria-hidden>
                 {matchCount === 0 ? 'No matches' : `${formatNumber(matchCount)} ${matchCount === 1 ? 'match' : 'matches'}`}
               </p>
             )}
@@ -149,13 +148,10 @@ export function FilesRail({ onShow, className }: { onShow: () => void; className
         onClick={onShow}
         aria-label="Show the file list"
         title="Show the file list"
-        className="flex size-9 items-center justify-center rounded-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
+        className="flex size-9 items-center justify-center rounded-lg text-ink-2 transition-colors duration-150 ease-atlas hover:bg-surface-2 hover:text-ink"
       >
-        <PanelLeftOpen className="size-4" aria-hidden />
+        <Icon as={PanelLeftOpen} />
       </button>
-      <span className="mt-2 text-base leading-none" aria-hidden>
-        📂
-      </span>
     </div>
   )
 }

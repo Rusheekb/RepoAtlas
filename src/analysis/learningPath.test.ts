@@ -68,6 +68,8 @@ describe('buildLearningPath', () => {
     const modules = steps.filter((s) => s.target.type === 'module')
     expect(modules.length).toBeGreaterThanOrEqual(2)
     expect(modules[0].target).toEqual({ type: 'module', id: 'src/lib' })
+    // The module's emoji stays in its data; the step title is plain text.
+    expect(modules[0].title).toBe('Explore lib')
     expect(modules[0].description).toMatch(/biggest part of the main code/)
     expect(modules[0].description).toMatch(/A good file to start with is db\.ts\./)
     expect(modules.some((s) => s.target.type === 'module' && s.target.id === 'tests')).toBe(false)
@@ -77,6 +79,7 @@ describe('buildLearningPath', () => {
     for (const s of steps) {
       expect(s.minutes).toBeGreaterThan(0)
       expect(s.description.length).toBeGreaterThan(20)
+      expect(`${s.title} ${s.description}`).not.toMatch(/\p{Extended_Pictographic}|!/u)
     }
   })
 

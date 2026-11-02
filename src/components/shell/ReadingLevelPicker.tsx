@@ -2,6 +2,7 @@ import { useId } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Segmented } from '@/components/ui/Segmented'
 import { cn } from '@/components/ui/cn'
+import { Icon } from '@/components/ui/icons'
 import { READING_LEVELS } from '@/core/labels'
 import type { ReadingLevel } from '@/core/types'
 import { useSettings } from '@/state/settings'
@@ -35,7 +36,7 @@ export function ReadingLevelPicker({ variant = 'segmented', className }: { varia
   if (variant === 'select') {
     return (
       <div className={cn('flex flex-col gap-1.5', className)}>
-        <label htmlFor={id} className="text-xs font-medium text-ink-3">
+        <label htmlFor={id} className="text-xs text-ink-3">
           Claude explains things for
         </label>
         <div className="relative">
@@ -44,7 +45,7 @@ export function ReadingLevelPicker({ variant = 'segmented', className }: { varia
             value={level}
             aria-describedby={hintId}
             onChange={(e) => set({ readingLevel: e.target.value as ReadingLevel })}
-            className="h-10 w-full appearance-none rounded-xl border border-line-strong bg-surface pr-9 pl-3 text-sm text-ink"
+            className="h-10 w-full appearance-none rounded-lg border border-line-strong bg-surface pr-9 pl-3 text-sm text-ink"
           >
             {READING_LEVEL_ORDER.map((l) => (
               <option key={l} value={l}>
@@ -52,7 +53,7 @@ export function ReadingLevelPicker({ variant = 'segmented', className }: { varia
               </option>
             ))}
           </select>
-          <ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-ink-3" aria-hidden />
+          <Icon as={ChevronDown} className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-ink-3" />
         </div>
         <p id={hintId} className="text-xs text-ink-3">
           {READING_LEVELS[level].description}
@@ -65,7 +66,7 @@ export function ReadingLevelPicker({ variant = 'segmented', className }: { varia
   const note = hasKey ? '' : ` ${NO_KEY_LEVEL_HINT}`
   return (
     <div className={cn('flex items-center gap-2', className)} title={hasKey ? undefined : NO_KEY_LEVEL_HINT}>
-      <span className="text-xs font-medium whitespace-nowrap text-ink-3" aria-hidden>
+      <span className="text-xs whitespace-nowrap text-ink-3" aria-hidden>
         Claude explains for:
       </span>
       <Segmented<ReadingLevel>

@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { Check, ChevronRight } from 'lucide-react'
+import { Check, ChevronRight, Folder, FolderOpen } from 'lucide-react'
 import { cn } from '@/components/ui/cn'
+import { Icon, LayerDot, RoleIcon } from '@/components/ui/icons'
 import { formatNumber } from '@/core/format'
 import { LAYER_INFO, ROLE_INFO } from '@/core/labels'
 import type { AnalyzedFile } from '@/core/types'
@@ -31,11 +32,10 @@ export interface FileTreeProps {
  * redraw them all). A few hundred rows is more than anyone scans; typing more narrows it down.
  */
 export const MAX_SEARCH_ROWS = 250
-const INDENT_PX = 14
-
-function fileEmoji(file: AnalyzedFile): string {
-  return file.isEntry ? ROLE_INFO.entry.emoji : (ROLE_INFO[file.role] ?? ROLE_INFO.other).emoji
-}
+/** Each level of folders steps in by this much (4px grid). */
+const INDENT_PX = 16
+/** Left padding of a top-level row, so the icon column lines up with the search icon above the tree. */
+const ROW_PAD_PX = 8
 
 function Highlighted({ name, terms }: { name: string; terms: readonly string[] }): ReactNode {
   const m = terms.length ? matchRange(name, terms) : null
@@ -43,14 +43,14 @@ function Highlighted({ name, terms }: { name: string; terms: readonly string[] }
   return (
     <>
       {name.slice(0, m.start)}
-      <mark className="rounded-[3px] bg-brand-soft px-px font-semibold text-brand-text">{name.slice(m.start, m.end)}</mark>
+      <mark className="rounded-xs bg-surface-3 px-px font-medium text-ink">{name.slice(m.start, m.end)}</mark>
       {name.slice(m.end)}
     </>
   )
 }
 
 /**
- * Collapsible folder tree with role emoji + layer dot per file, folders auto-expanded to the selection, keyboard navigable.
+ * Collapsible folder tree with a role icon + layer dot per file, folders auto-expanded to the selection, keyboard navigable.
  * Memoised: it only redraws when its own props change (not on every keystroke of a search box around it).
  */
 export const FileTree = memo(function FileTree(props: FileTreeProps) {
@@ -230,11 +230,11 @@ export const FileTree = memo(function FileTree(props: FileTreeProps) {
               No files match <span className="font-medium text-ink">“{query.trim()}”</span>. Try a shorter word.
             </>
           ) : (
-            'This project has no files to show.'
+            'This project has no files to show'
           )}
         </p>
       ) : (
-        <ul role="tree" aria-label={label} className="py-1" onKeyDown={onKeyDown}>
+        <ul role="tree" aria-label={label} className="space-y-0.5 py-1" onKeyDown={onKeyDown}>
           {rows.map((row) => {
             const focusable = row.path === tabPath
             const common = {
@@ -244,10 +244,11 @@ export const FileTree = memo(function FileTree(props: FileTreeProps) {
               'aria-setsize': row.setSize,
               'aria-posinset': row.posInSet,
               onFocus: () => setFocusedPath(row.path),
-              style: { paddingLeft: 6 + row.depth * INDENT_PX },
+              style: { paddingLeft: ROW_PAD_PX + row.depth * INDENT_PX },
             }
+            // One row height (32) and one icon column for folders and files alike; rows sit 2px apart.
             const base =
-              'mx-1 flex h-8 cursor-pointer items-center gap-1.5 rounded-lg pr-2 text-[13px] select-none outline-offset-[-2px] motion-safe:transition-colors'
+              'mx-2 flex h-8 cursor-pointer items-center gap-2 rounded-lg pr-2 text-[13px] select-none outline-offset-[-2px] transition-colors duration-150 ease-atlas'
 
             if (row.kind === 'folder') {
               return (
@@ -265,17 +266,17 @@ export const FileTree = memo(function FileTree(props: FileTreeProps) {
                   className={cn(base, 'text-ink hover:bg-surface-2')}
                   title={row.path}
                 >
-                  <ChevronRight
-                    className={cn('size-3.5 shrink-0 text-ink-3 motion-safe:transition-transform', row.expanded && 'rotate-90')}
-                    aria-hidden
-                  />
-                  <span className="shrink-0 text-sm leading-none" aria-hidden>
-                    {row.expanded ? '📂' : '📁'}
+                  <span className="flex w-4 shrink-0 justify-center" aria-hidden>
+                    <ChevronRight
+                      className={cn('size-3.5 text-ink-3 transition-transform duration-150 ease-atlas', row.expanded && 'rotate-90')}
+                      strokeWidth={1.5}
+                    />
                   </span>
-                  <span className="min-w-0 flex-1 truncate font-medium">
+                  <Icon as={row.expanded ? FolderOpen : Folder} className="text-ink-3" />
+                  <span className="min-w-0 flex-1 truncate">
                     <Highlighted name={row.name} terms={terms} />
                   </span>
-                  <span className="shrink-0 text-[11px] text-ink-3 tabular-nums" aria-hidden>
+                  <span className="shrink-0 text-meta" aria-hidden>
                     {formatNumber(row.folder.fileCount)}
                   </span>
                 </li>
@@ -290,10 +291,11 @@ export const FileTree = memo(function FileTree(props: FileTreeProps) {
                   role="treeitem"
                   aria-label={`Show ${formatNumber(row.hidden)} more files in this folder`}
                   onClick={() => showMore(row.folderPath)}
-                  className={cn(base, 'font-medium text-brand-text hover:bg-surface-2')}
+                  className={cn(base, 'text-ink-2 hover:bg-surface-2 hover:text-ink')}
                 >
-                  <span className="w-3.5 shrink-0" aria-hidden />
-                  <span className="truncate">Show {formatNumber(row.hidden)} more…</span>
+                  <span className="w-4 shrink-0" aria-hidden />
+                  <span className="w-4 shrink-0" aria-hidden />
+                  <span className="truncate underline decoration-line-strong underline-offset-2">Show {formatNumber(row.hidden)} more</span>
                 </li>
               )
             }
@@ -315,18 +317,16 @@ export const FileTree = memo(function FileTree(props: FileTreeProps) {
                   setFocusedPath(row.path)
                   onSelect(row.path)
                 }}
-                className={cn(base, selected ? 'bg-brand-soft font-medium text-brand-text' : 'text-ink-2 hover:bg-surface-2 hover:text-ink')}
+                className={cn(base, selected ? 'bg-brand-soft font-medium text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink')}
                 title={`${row.path} · ${f.isEntry ? ROLE_INFO.entry.label : role.label} · ${layer.label}`}
               >
-                <span className="w-3.5 shrink-0" aria-hidden />
-                <span className="shrink-0 text-sm leading-none" aria-hidden>
-                  {fileEmoji(f)}
-                </span>
+                <span className="w-4 shrink-0" aria-hidden />
+                <RoleIcon role={f.isEntry ? 'entry' : f.role} className={selected ? 'text-ink-2' : 'text-ink-3'} data-icon={f.isEntry ? 'entry' : f.role} />
                 <span className="min-w-0 flex-1 truncate">
                   <Highlighted name={row.name} terms={terms} />
                 </span>
-                {seen && <Check className="size-3.5 shrink-0 text-good-text" aria-hidden />}
-                <span className="size-2 shrink-0 rounded-full" style={{ background: layer.color }} aria-hidden />
+                {seen && <Icon as={Check} size={14} className="text-ink-3" />}
+                <LayerDot layer={f.layer in LAYER_INFO ? f.layer : 'other'} />
               </li>
             )
           })}
