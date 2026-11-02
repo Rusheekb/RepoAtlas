@@ -46,7 +46,7 @@ export function Segmented<T extends string>({
       role="radiogroup"
       aria-label={label}
       aria-describedby={describedBy}
-      className={cn('inline-flex rounded-xl border border-line bg-surface-2 p-0.5', className)}
+      className={cn('inline-flex rounded-lg border border-line bg-surface-2 p-0.5', className)}
     >
       {options.map((o, i) => {
         const active = o.value === value
@@ -64,9 +64,10 @@ export function Segmented<T extends string>({
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cn(
-              'rounded-[10px] font-medium whitespace-nowrap transition-colors',
-              size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3 py-1.5 text-sm',
-              active ? 'bg-surface text-ink shadow-sm' : 'text-ink-2 hover:text-ink',
+              // Nested radius: 8px outer − 2px padding = 6px.
+              'rounded-md whitespace-nowrap transition-colors duration-150 ease-atlas',
+              size === 'sm' ? 'h-7 px-2.5 text-xs' : 'h-8 px-3 text-sm',
+              active ? 'bg-surface font-medium text-ink shadow-sm dark:bg-surface-3 dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.08)]' : 'text-ink-2 hover:text-ink',
             )}
           >
             {o.label}

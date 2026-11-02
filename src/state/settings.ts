@@ -89,7 +89,7 @@ export const useSettings = create<SettingsState>()(
 export function applyTheme(pref: ThemePref) {
   const dark = pref === 'dark' || (pref === 'system' && window.matchMedia?.('(prefers-color-scheme: dark)').matches)
   document.documentElement.dataset.theme = dark ? 'dark' : 'light'
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#121211' : '#f6f5f2')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#161513' : '#f7f5f0')
 }
 
 export function hasClaudeKey(): boolean {
